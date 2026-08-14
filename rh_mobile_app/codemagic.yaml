@@ -1,0 +1,48 @@
+# RH Connect (Flutter) — workflows Codemagic.
+# Codemagic scanne aussi le `codemagic.yaml` à la racine du monorepo
+# (working_directory: rh_mobile_app). Garder les deux fichiers alignés.
+#
+# Docs : https://docs.codemagic.io/yaml-quick-start/building-a-flutter-app/
+
+workflows:
+  rh-connect-android:
+    name: RH Connect Android
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      flutter: 3.29.2
+      java: 17
+      vars:
+        PACKAGE_NAME: com.example.rh_mobile_app
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - $HOME/.gradle/caches
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch_patterns:
+        - pattern: develop_4
+          include: true
+          source: true
+      cancel_previous_builds: true
+    scripts:
+      - name: Set up local.properties
+        script: |
+          echo "flutter.sdk=$HOME/programs/flutter" > "$CM_BUILD_DIR/android/local.properties"
+      - name: Get Flutter packages
+        script: flutter pub get
+      - name: Analyze
+        script: flutter analyze
+        ignore_failure: true
+      - name: Unit tests
+        script: flutter test
+      - name: Build APK (release, debug signing — Gradle actuel)
+        script: |
+          flutter build apk --release \
+            --build-name=1.0.0 \
+            --build-number=${BUILD_NUMBER:-$PROJECT_BUILD_NUMBER}
+    artifacts:
+      - build/**/outputs/**/*.apk
+      - build/**/outputs/**/mapping.txt
