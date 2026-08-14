@@ -1,23 +1,28 @@
-# RH Connect (Flutter) — workflows Codemagic.
+# RH Connect (Flutter) — workflows Codemagic (iPhone d’abord).
 # Codemagic scanne aussi le `codemagic.yaml` à la racine du monorepo
 # (working_directory: rh_mobile_app). Garder les deux fichiers alignés.
 #
 # Docs : https://docs.codemagic.io/yaml-quick-start/building-a-flutter-app/
 
 workflows:
-  rh-connect-android:
-    name: RH Connect Android
-    max_build_duration: 60
+  rh-connect-ios:
+    name: RH Connect iOS
+    max_build_duration: 90
     instance_type: mac_mini_m2
     environment:
       flutter: 3.29.2
-      java: 17
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: ad_hoc
+        bundle_identifier: com.example.rhMobileApp
       vars:
-        PACKAGE_NAME: com.example.rh_mobile_app
+        BUNDLE_ID: com.example.rhMobileApp
+        API_BASE_URL: ""
     cache:
       cache_paths:
         - $HOME/.pub-cache
-        - $HOME/.gradle/caches
+        - $HOME/Library/Caches/CocoaPods
     triggering:
       events:
         - push
@@ -28,21 +33,48 @@ workflows:
           source: true
       cancel_previous_builds: true
     scripts:
-      - name: Set up local.properties
-        script: |
-          echo "flutter.sdk=$HOME/programs/flutter" > "$CM_BUILD_DIR/android/local.properties"
+      - name: Set up code signing
+        script: xcode-project use-profiles
       - name: Get Flutter packages
         script: flutter pub get
+      - name: Install CocoaPods
+        script: find . -name "Podfile" -execdir pod install \;
       - name: Analyze
         script: flutter analyze
         ignore_failure: true
       - name: Unit tests
         script: flutter test
-      - name: Build APK (release, debug signing — Gradle actuel)
+      - name: Build IPA
         script: |
-          flutter build apk --release \
+          DEFINE_ARGS=()
+          if [ -n "$API_BASE_URL" ]; then
+            DEFINE_ARGS+=(--dart-define="API_BASE_URL=$API_BASE_URL")
+          fi
+          flutter build ipa --release \
             --build-name=1.0.0 \
-            --build-number=${BUILD_NUMBER:-$PROJECT_BUILD_NUMBER}
+            --build-number=${BUILD_NUMBER:-$PROJECT_BUILD_NUMBER} \
+            --export-options-plist=/Users/builder/export_options.plist \
+            "${DEFINE_ARGS[@]}"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+  rh-connect-android:
+    name: RH Connect Android (manuel)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      flutter: 3.29.2
+      java: 17
+    scripts:
+      - name: Set up local.properties
+        script: |
+          echo "flutter.sdk=$HOME/programs/flutter" > "$CM_BUILD_DIR/android/local.properties"
+      - name: Get Flutter packages
+        script: flutter pub get
+      - name: Unit tests
+        script: flutter test
+      - name: Build APK
+        script: flutter build apk --release
     artifacts:
       - build/**/outputs/**/*.apk
-      - build/**/outputs/**/mapping.txt

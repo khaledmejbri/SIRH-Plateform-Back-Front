@@ -35,7 +35,7 @@ class PresenceGps {
       return (
         position: null,
         error:
-            'Localisation indisponible sur cette plateforme. Utilisez un appareil Android.',
+            'Localisation indisponible sur cette plateforme. Utilisez un iPhone ou un Android.',
       );
     } on PlatformException catch (e) {
       if (e.code == 'DISABLED') {
