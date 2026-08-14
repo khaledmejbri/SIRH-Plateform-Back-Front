@@ -1,5 +1,3 @@
-import 'package:intl/intl.dart';
-
 class Post {
   final String id;
   final String authorName;

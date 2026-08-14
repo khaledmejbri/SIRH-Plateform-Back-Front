@@ -116,7 +116,7 @@ void main() {
     });
 
     test('PointageRequest toJson', () {
-      final body = PointageRequest(
+      final body = const PointageRequest(
         qrToken: 'p1.abc.sig',
         type: TypePointage.entree,
         latitude: 36.8,

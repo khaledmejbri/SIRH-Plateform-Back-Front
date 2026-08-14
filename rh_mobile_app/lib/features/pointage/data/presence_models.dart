@@ -1,4 +1,4 @@
-/// Modèles M09 — présence QR + GPS (vague Must).
+// Modèles M09 — présence QR + GPS (vague Must).
 
 enum TypePointage {
   entree('ENTREE'),

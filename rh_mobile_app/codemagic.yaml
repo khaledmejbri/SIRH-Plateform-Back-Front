@@ -16,7 +16,6 @@ workflows:
     cache:
       cache_paths:
         - $HOME/.pub-cache
-        - $HOME/Library/Caches/CocoaPods
     triggering:
       events:
         - push
