@@ -2,8 +2,9 @@ import CoreLocation
 import Flutter
 import UIKit
 
+/// Compatible Flutter 3.29 (Codemagic) — pas de FlutterImplicitEngineDelegate.
 @main
-@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate, CLLocationManagerDelegate {
+@objc class AppDelegate: FlutterAppDelegate, CLLocationManagerDelegate {
   private let locationManager = CLLocationManager()
   private var pendingResult: FlutterResult?
   private var timeoutWork: DispatchWorkItem?
@@ -12,18 +13,24 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    GeneratedPluginRegistrant.register(with: self)
+    let launched = super.application(application, didFinishLaunchingWithOptions: launchOptions)
+
     locationManager.delegate = self
     locationManager.desiredAccuracy = kCLLocationAccuracyBest
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    setupLocationChannel()
+    return launched
   }
 
-  func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
-    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+  private func setupLocationChannel() {
+    guard let controller = window?.rootViewController as? FlutterViewController else {
+      return
+    }
     let channel = FlutterMethodChannel(
       name: "rh_connect/location",
-      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+      binaryMessenger: controller.binaryMessenger
     )
-    channel.setMethodCallHandler { [weak self] call, result in
+    channel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
       guard let self = self else { return }
       switch call.method {
       case "isLocationEnabled":
@@ -36,12 +43,19 @@ import UIKit
     }
   }
 
+  private func authStatus() -> CLAuthorizationStatus {
+    if #available(iOS 14.0, *) {
+      return locationManager.authorizationStatus
+    }
+    return CLLocationManager.authorizationStatus()
+  }
+
   private func requestPosition(_ result: @escaping FlutterResult) {
     if !CLLocationManager.locationServicesEnabled() {
       result(FlutterError(code: "DISABLED", message: "GPS désactivé", details: nil))
       return
     }
-    let status = locationManager.authorizationStatus
+    let status = authStatus()
     if status == .denied || status == .restricted {
       result(FlutterError(code: "PERMISSION", message: "Localisation non autorisée", details: nil))
       return
@@ -76,8 +90,15 @@ import UIKit
   }
 
   func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    handleAuthorizationChange(authStatus())
+  }
+
+  func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+    handleAuthorizationChange(status)
+  }
+
+  private func handleAuthorizationChange(_ status: CLAuthorizationStatus) {
     guard pendingResult != nil else { return }
-    let status = manager.authorizationStatus
     if status == .authorizedWhenInUse || status == .authorizedAlways {
       startLocationRequest()
     } else if status == .denied || status == .restricted {
