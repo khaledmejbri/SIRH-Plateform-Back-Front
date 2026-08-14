@@ -387,7 +387,7 @@ class _UnitePicker extends ConsumerWidget {
               const _PickerError(message: 'Impossible de charger les unites.'),
       data:
           (items) => DropdownButtonFormField<String>(
-            initialValue: value,
+            value: value,
             decoration: InputDecoration(
               labelText: 'Unite cible',
               prefixIcon: const Icon(Icons.account_tree_outlined),

@@ -61,7 +61,7 @@ class _PlainteCreateScreenState extends ConsumerState<PlainteCreateScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               DropdownButtonFormField<String>(
-                initialValue: _type,
+                value: _type,
                 decoration: const InputDecoration(labelText: 'Type'),
                 items: const [
                   DropdownMenuItem(value: 'INTERNE', child: Text('Interne')),
