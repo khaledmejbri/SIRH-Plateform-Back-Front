@@ -21,7 +21,8 @@ workflows:
         bundle_identifier: com.example.rhMobileApp
       vars:
         BUNDLE_ID: com.example.rhMobileApp
-        API_BASE_URL: ""
+        # Surcharger dans l’UI Codemagic pour un iPhone réel : http://<IP-PC>:8080
+        API_BASE_URL: http://127.0.0.1:8080
     cache:
       cache_paths:
         - $HOME/.pub-cache
