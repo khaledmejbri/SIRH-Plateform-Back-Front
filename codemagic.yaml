@@ -37,7 +37,10 @@ workflows:
       - name: Get Flutter packages
         script: flutter pub get
       - name: Install CocoaPods
-        script: find . -name "Podfile" -execdir pod install \;
+        script: |
+          cd ios
+          rm -rf Pods Podfile.lock .symlinks
+          pod install
       - name: Analyze
         script: flutter analyze
         ignore_failure: true
@@ -74,7 +77,10 @@ workflows:
       - name: Get Flutter packages
         script: flutter pub get
       - name: Install CocoaPods
-        script: find . -name "Podfile" -execdir pod install \;
+        script: |
+          cd ios
+          rm -rf Pods Podfile.lock .symlinks
+          pod install
       - name: Build IPA
         script: |
           flutter build ipa --release \
