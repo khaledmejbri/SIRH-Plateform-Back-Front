@@ -1,5 +1,11 @@
 import axios from 'axios';
 import { getToken } from './auth';
+import {
+  appreciationFromScore,
+  normalizeCouleurAlerte,
+  normalizeNiveauSeniorite,
+  type CouleurAlerte,
+} from './evaluationCatalog';
 
 const api = axios.create({
   baseURL: '',
@@ -26,12 +32,15 @@ type QuestionType =
   | 'DATE'
   | 'NUMBER';
 
+/** Fréquences Must — pas de TRIMESTRIELLE (E1-R04). */
+export type CampaignType = 'ANNUELLE' | 'SEMESTRIELLE';
+
 export interface EvaluationCampaign {
   identifiant: string;
   nom: string;
   description?: string;
-  type: 'ANNUELLE' | 'SEMESTRIELLE';
-  statut: 'PLANIFIEE' | 'ACTIVE' | 'TERMINEE';
+  type: CampaignType;
+  statut: 'PLANIFIEE' | 'ACTIVE' | 'TERMINEE' | 'ANNULEE';
   annee: number;
   moisDebut: number;
   moisFin: number;
@@ -45,11 +54,21 @@ export interface EvaluationCampaign {
 export interface CreateCampaignRequest {
   nom: string;
   description?: string;
-  type: 'ANNUELLE' | 'SEMESTRIELLE';
+  type: CampaignType;
   annee: number;
+  /** Must ∈ {6, 12} (E1-R02). */
   moisDebut: number;
   moisFin: number;
   creePar: string;
+}
+
+export interface ActivateCampaignResult {
+  campagneId?: string;
+  statut?: string;
+  evaluationsCreees?: number;
+  ignoresDejaExistantes?: number;
+  ignoresManagerManquant?: number;
+  profilsIncomplets?: number;
 }
 
 export interface EvaluationQuestion {
@@ -96,7 +115,10 @@ export interface EvaluationTemplate {
   type: TemplateType;
   statut: TemplateStatus;
   version: number;
+  /** Clé matching E3 — famille catalogue. */
+  familleMetierCode?: string;
   niveauSeniorite?: string;
+  /** @deprecated lecture legacy → familleMetierCode */
   role?: string;
   domaine?: string;
   actif: boolean;
@@ -112,7 +134,12 @@ export interface CreateTemplateRequest {
   nom: string;
   description?: string;
   type: TemplateType;
+  /** Snake cible BA ; aussi envoyé en camel + alias `role` pour backend actuel. */
+  famille_metier_code?: string;
+  familleMetierCode?: string;
+  niveau_seniorite?: string;
   niveauSeniorite?: string;
+  /** @deprecated alias écriture → famille_metier_code */
   role?: string;
   domaine?: string;
   questions?: CreateQuestionRequest[];
@@ -153,9 +180,15 @@ export interface EvaluationItem {
   campaignNom: string;
   collaborateurIdentifiant: string;
   superieurIdentifiant: string;
+  collaborateurNom?: string;
+  collaborateurMatricule?: string;
+  superieurNom?: string;
   statut: string;
   etapeActuelle: string;
   scoreSur20?: number;
+  appreciation?: string;
+  couleurAlerte?: CouleurAlerte;
+  profilMetierIncomplet?: boolean;
   creeLe: string;
 }
 
@@ -223,7 +256,17 @@ function normalizeQuestion(value: any): EvaluationQuestion {
   };
 }
 
+function resolveFamilleCode(value: any): string | undefined {
+  const raw =
+    value?.familleMetierCode
+    ?? value?.famille_metier_code
+    ?? value?.role
+    ?? value?.roleMetier;
+  return typeof raw === 'string' && raw.trim() ? raw.trim().toUpperCase() : undefined;
+}
+
 function normalizeTemplate(value: any): EvaluationTemplate {
+  const familleMetierCode = resolveFamilleCode(value);
   return {
     identifiant: idOf(value),
     nom: value?.nom ?? '',
@@ -231,7 +274,10 @@ function normalizeTemplate(value: any): EvaluationTemplate {
     type: value?.type ?? 'GENERIC',
     statut: value?.statut ?? 'DRAFT',
     version: value?.version ?? 1,
-    niveauSeniorite: value?.niveauSeniorite,
+    familleMetierCode,
+    niveauSeniorite: normalizeNiveauSeniorite(
+      value?.niveauSeniorite ?? value?.niveau_seniorite
+    ),
     role: value?.role,
     domaine: value?.domaine,
     actif: value?.actif ?? true,
@@ -241,6 +287,30 @@ function normalizeTemplate(value: any): EvaluationTemplate {
     publieLe: value?.publieLe,
     publiePar: value?.publiePar,
     questions: Array.isArray(value?.questions) ? value.questions.map(normalizeQuestion) : []
+  };
+}
+
+function normalizeEvaluationItem(value: any): EvaluationItem {
+  const scoreSur20 = value?.scoreSur20 != null ? Number(value.scoreSur20) : undefined;
+  const appreciation =
+    value?.appreciation
+    ?? value?.appreciationLibelle
+    ?? appreciationFromScore(scoreSur20);
+  return {
+    identifiant: idOf(value),
+    campaignNom: value?.campaignNom ?? value?.campagneNom ?? '',
+    collaborateurIdentifiant: String(value?.collaborateurIdentifiant ?? ''),
+    superieurIdentifiant: String(value?.superieurIdentifiant ?? ''),
+    collaborateurNom: value?.collaborateurNom,
+    collaborateurMatricule: value?.collaborateurMatricule,
+    superieurNom: value?.superieurNom,
+    statut: value?.statut ?? '',
+    etapeActuelle: value?.etapeActuelle ?? '',
+    scoreSur20,
+    appreciation,
+    couleurAlerte: normalizeCouleurAlerte(value?.couleurAlerte ?? value?.couleur_alerte),
+    profilMetierIncomplet: Boolean(value?.profilMetierIncomplet ?? value?.profil_metier_incomplet),
+    creeLe: value?.creeLe ?? new Date().toISOString(),
   };
 }
 
@@ -262,8 +332,9 @@ export const campaignApi = {
     const response = await api.post('/api/rh/v1/admin/evaluations/campaigns', data);
     return normalizeCampaign(response.data);
   },
-  async activate(id: string): Promise<void> {
-    await api.post(`/api/rh/v1/admin/evaluations/campaigns/${id}/activate`);
+  async activate(id: string): Promise<ActivateCampaignResult> {
+    const response = await api.post(`/api/rh/v1/admin/evaluations/campaigns/${id}/activate`);
+    return (response.data && typeof response.data === 'object') ? response.data : {};
   },
   async terminate(id: string): Promise<void> {
     await api.post(`/api/rh/v1/admin/evaluations/campaigns/${id}/terminate`);
@@ -280,19 +351,49 @@ export const campaignApi = {
   }
 };
 
+export type TemplateListFilters = {
+  type?: string;
+  statut?: string;
+  familleMetierCode?: string;
+  niveauSeniorite?: string;
+};
+
 export const templateApi = {
   async list(): Promise<EvaluationTemplate[]> {
     const response = await api.get('/api/rh/v1/admin/evaluations/templates');
     return response.data.map(normalizeTemplate);
   },
   async createV2(data: CreateTemplateRequest, userId: string): Promise<EvaluationTemplate> {
-    const response = await api.post(`/api/rh/v1/admin/evaluations/v2?userId=${userId}`, data);
+    const famille = data.famille_metier_code ?? data.familleMetierCode ?? data.role;
+    const niveau = normalizeNiveauSeniorite(data.niveau_seniorite ?? data.niveauSeniorite);
+    // Compat backend actuel (`role` + `niveauSeniorite`) + contrat cible BA.
+    const body: CreateTemplateRequest = {
+      ...data,
+      famille_metier_code: famille,
+      familleMetierCode: famille,
+      niveau_seniorite: niveau,
+      niveauSeniorite: niveau,
+      role: data.type === 'TECHNICAL' ? famille : undefined,
+    };
+    const response = await api.post(`/api/rh/v1/admin/evaluations/v2?userId=${userId}`, body);
     return normalizeTemplate(response.data);
   },
-  async listV2(type?: string, statut?: string): Promise<EvaluationTemplate[]> {
+  async listV2(typeOrFilters?: string | TemplateListFilters, statut?: string): Promise<EvaluationTemplate[]> {
+    const filters: TemplateListFilters =
+      typeof typeOrFilters === 'string' || typeOrFilters == null
+        ? { type: typeOrFilters, statut }
+        : typeOrFilters;
     const params = new URLSearchParams();
-    if (type) params.append('type', type);
-    if (statut) params.append('statut', statut);
+    if (filters.type) params.append('type', filters.type);
+    if (filters.statut) params.append('statut', filters.statut);
+    if (filters.familleMetierCode) {
+      params.append('famille_metier_code', filters.familleMetierCode);
+      params.append('role', filters.familleMetierCode);
+    }
+    if (filters.niveauSeniorite) {
+      params.append('niveau_seniorite', filters.niveauSeniorite);
+      params.append('niveauSeniorite', filters.niveauSeniorite);
+    }
     const suffix = params.toString() ? `?${params.toString()}` : '';
     const response = await api.get(`/api/rh/v1/admin/evaluations/v2${suffix}`);
     return response.data.map(normalizeTemplate);
@@ -339,21 +440,25 @@ export const technicalTemplateApi = {
 };
 
 export const evaluationApi = {
-  async list(): Promise<EvaluationItem[]> {
-    const response = await api.get('/api/rh/v1/admin/evaluations');
-    return response.data.map((item: any) => ({ ...item, identifiant: idOf(item) }));
+  async list(opts?: { campagneId?: string; profilIncomplet?: boolean }): Promise<EvaluationItem[]> {
+    const params = new URLSearchParams();
+    if (opts?.campagneId) params.append('campagneId', opts.campagneId);
+    if (opts?.profilIncomplet) params.append('profilIncomplet', 'true');
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    const response = await api.get(`/api/rh/v1/admin/evaluations${suffix}`);
+    return response.data.map(normalizeEvaluationItem);
   },
   async getById(id: string): Promise<EvaluationItem> {
     const response = await api.get(`/api/rh/v1/admin/evaluations/${id}`);
-    return { ...response.data, identifiant: idOf(response.data) };
+    return normalizeEvaluationItem(response.data);
   },
   async getByCollaborateur(collaborateurId: string): Promise<EvaluationItem[]> {
     const response = await api.get(`/api/rh/v1/admin/evaluations/collaborateur/${collaborateurId}`);
-    return response.data.map((item: any) => ({ ...item, identifiant: idOf(item) }));
+    return response.data.map(normalizeEvaluationItem);
   },
   async getBySuperieur(superieurId: string): Promise<EvaluationItem[]> {
     const response = await api.get(`/api/rh/v1/admin/evaluations/superieur/${superieurId}`);
-    return response.data.map((item: any) => ({ ...item, identifiant: idOf(item) }));
+    return response.data.map(normalizeEvaluationItem);
   },
   async analytics(id: string): Promise<EvaluationAnalytics> {
     const response = await api.get(`/api/rh/v1/admin/evaluations/${id}/analytics`);

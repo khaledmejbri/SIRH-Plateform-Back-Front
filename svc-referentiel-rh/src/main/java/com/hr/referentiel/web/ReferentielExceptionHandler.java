@@ -14,9 +14,22 @@ import java.util.Map;
 @RestControllerAdvice
 public class ReferentielExceptionHandler {
 
+	@ExceptionHandler(ReferentielMetierException.class)
+	public ResponseEntity<Map<String, Object>> metier(ReferentielMetierException ex) {
+		Map<String, Object> body = new HashMap<>();
+		body.put("code", ex.getCode());
+		body.put("erreur", ex.getMessage());
+		return ResponseEntity.status(ex.getHttpStatus()).body(body);
+	}
+
 	@ExceptionHandler(IllegalArgumentException.class)
 	public ResponseEntity<Map<String, String>> illegalArgument(IllegalArgumentException ex) {
-		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("erreur", ex.getMessage()));
+		String msg = ex.getMessage() != null ? ex.getMessage() : "Données invalides";
+		if ("NIVEAU_SENIORITE_INVALIDE".equals(msg) || "FAMILLE_METIER_INCONNUE".equals(msg)) {
+			return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+					.body(Map.of("code", msg, "erreur", msg));
+		}
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("erreur", msg));
 	}
 
 	@ExceptionHandler(IllegalStateException.class)

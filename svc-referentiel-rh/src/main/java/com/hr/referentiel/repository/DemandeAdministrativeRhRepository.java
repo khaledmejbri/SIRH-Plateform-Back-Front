@@ -15,8 +15,12 @@ public interface DemandeAdministrativeRhRepository extends JpaRepository<Demande
 
 	List<DemandeAdministrativeRh> findByDemandeurIdOrderByCreeLeDesc(UUID demandeurId);
 
+	/** @deprecated Préférer {@link #findByValideurAttenduIdAndStatutOrderByCreeLeDesc} (manager nœud). */
 	List<DemandeAdministrativeRh> findByDemandeurSuperieurIdAndStatutOrderByCreeLeDesc(
 			UUID superieurId, StatutDemandeAdministrativeRh statut);
+
+	List<DemandeAdministrativeRh> findByValideurAttenduIdAndStatutOrderByCreeLeDesc(
+			UUID valideurAttenduId, StatutDemandeAdministrativeRh statut);
 
 	List<DemandeAdministrativeRh> findByDemandeurIdAndTypeDemandeOrderByCreeLeDesc(UUID demandeurId,
 			TypeDemandeAdministrativeRh typeDemande);

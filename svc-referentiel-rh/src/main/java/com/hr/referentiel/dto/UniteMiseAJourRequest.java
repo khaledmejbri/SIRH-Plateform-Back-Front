@@ -14,6 +14,14 @@ public class UniteMiseAJourRequest {
 	@JsonProperty("parent_identifiant")
 	private UUID parentIdentifiant;
 
+	@Size(max = 120)
+	@JsonProperty("type_noeud")
+	private String typeNoeud;
+
+	@Size(max = 255)
+	@JsonProperty("titre_poste")
+	private String titrePoste;
+
 	@JsonProperty("actif")
 	private Boolean actif;
 
@@ -31,6 +39,22 @@ public class UniteMiseAJourRequest {
 
 	public void setParentIdentifiant(UUID parentIdentifiant) {
 		this.parentIdentifiant = parentIdentifiant;
+	}
+
+	public String getTypeNoeud() {
+		return typeNoeud;
+	}
+
+	public void setTypeNoeud(String typeNoeud) {
+		this.typeNoeud = typeNoeud;
+	}
+
+	public String getTitrePoste() {
+		return titrePoste;
+	}
+
+	public void setTitrePoste(String titrePoste) {
+		this.titrePoste = titrePoste;
 	}
 
 	public Boolean getActif() {

@@ -51,4 +51,64 @@ public interface EvaluationTemplateRepository extends JpaRepository<EvaluationTe
     List<EvaluationTemplate> findByTypeAndStatutWithQuestions(@Param("type") TemplateType type, @Param("statut") TemplateStatus statut);
     
     List<EvaluationTemplate> findByRoleAndNiveauSeniorite(String role, String niveauSeniorite);
+
+    @Query("""
+            SELECT t FROM EvaluationTemplate t
+            WHERE t.type = :type AND t.statut = :statut AND t.actif = true
+              AND upper(t.niveauSeniorite) = upper(:niveau)
+            ORDER BY t.creeLe DESC
+            """)
+    List<EvaluationTemplate> findPublishedByTypeAndNiveau(
+            @Param("type") TemplateType type,
+            @Param("statut") TemplateStatus statut,
+            @Param("niveau") String niveau);
+
+    @Query("""
+            SELECT t FROM EvaluationTemplate t
+            WHERE t.type = :type AND t.statut = :statut AND t.actif = true
+              AND upper(t.niveauSeniorite) = upper(:niveau)
+              AND (t.role IS NULL OR upper(t.role) = upper(:role))
+            ORDER BY t.creeLe DESC
+            """)
+    List<EvaluationTemplate> findPublishedByTypeNiveauAndRole(
+            @Param("type") TemplateType type,
+            @Param("statut") TemplateStatus statut,
+            @Param("niveau") String niveau,
+            @Param("role") String role);
+
+    @Query("""
+            SELECT t FROM EvaluationTemplate t
+            WHERE t.type = :type AND t.statut = :statut AND t.actif = true
+              AND upper(coalesce(t.familleMetierCode, t.role)) = upper(:famille)
+              AND upper(t.niveauSeniorite) = upper(:niveau)
+            ORDER BY t.creeLe DESC
+            """)
+    List<EvaluationTemplate> findPublishedByTypeFamilleAndNiveau(
+            @Param("type") TemplateType type,
+            @Param("statut") TemplateStatus statut,
+            @Param("famille") String famille,
+            @Param("niveau") String niveau);
+
+    @Query("""
+            SELECT t FROM EvaluationTemplate t
+            WHERE t.type = :type AND t.statut = :statut AND t.actif = true
+              AND upper(coalesce(t.familleMetierCode, t.role)) = upper(:famille)
+              AND (t.niveauSeniorite IS NULL OR t.niveauSeniorite = '')
+            ORDER BY t.creeLe DESC
+            """)
+    List<EvaluationTemplate> findPublishedByTypeAndFamilleSansNiveau(
+            @Param("type") TemplateType type,
+            @Param("statut") TemplateStatus statut,
+            @Param("famille") String famille);
+
+    @Query("""
+            SELECT t FROM EvaluationTemplate t
+            WHERE t.type = :type AND t.statut = :statut AND t.actif = true
+              AND upper(coalesce(t.familleMetierCode, t.role)) = upper(:famille)
+            ORDER BY t.creeLe DESC
+            """)
+    List<EvaluationTemplate> findPublishedByTypeAndFamille(
+            @Param("type") TemplateType type,
+            @Param("statut") TemplateStatus statut,
+            @Param("famille") String famille);
 }

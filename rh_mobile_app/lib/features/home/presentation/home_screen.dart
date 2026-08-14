@@ -7,6 +7,7 @@ import '../../../core/widgets/notification_action.dart';
 import '../../demandes_admin/presentation/ro_validation_screen.dart';
 import '../../../features/auth/providers/collaborateur_notifier.dart';
 import '../../../features/auth/providers/auth_notifier.dart';
+import '../../evaluations/data/evaluation_repository.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -169,18 +170,17 @@ class _BottomNav extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Show pending badge on Demandes tab for RO users
+    // File M01 : JWT RO/RESPONSABLE (indice) OU demandes en attente (manager nœud).
     final userAsync = ref.watch(collaborateurNotifierProvider);
-    final isRo = userAsync.maybeWhen(
-      data: (u) => u?.isRo == true || u?.isChefDept == true,
+    final pendingCount = ref.watch(roDemandesEnAttenteProvider).maybeWhen(
+          data: (l) => l.length,
+          orElse: () => 0,
+        );
+    final peutValiderFile = userAsync.maybeWhen(
+      data: (u) => u?.peutValiderFile == true,
       orElse: () => false,
     );
-    int pendingCount = 0;
-    if (isRo) {
-      pendingCount = ref
-          .watch(roDemandesEnAttenteProvider)
-          .maybeWhen(data: (l) => l.length, orElse: () => 0);
-    }
+    final montreFile = peutValiderFile || pendingCount > 0;
 
     return Container(
       decoration: const BoxDecoration(
@@ -208,7 +208,7 @@ class _BottomNav extends ConsumerWidget {
                 index: 1,
                 current: currentIndex,
                 onTap: onTap,
-                badge: pendingCount,
+                badge: montreFile ? pendingCount : 0,
               ),
               // QR FAB center
               GestureDetector(
@@ -486,17 +486,30 @@ class _DashboardPage extends ConsumerWidget {
               ),
             ),
 
-            // ── RO Banner (visible uniquement si profil RO ou RESPONSABLE) ──
+            // ── File validation : JWT RO/RESPONSABLE ou file non vide (manager nœud) ──
             SliverToBoxAdapter(
               child: userAsync.when(
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => const SizedBox.shrink(),
                 data: (user) {
-                  final isResponsable = user != null && user.isResponsable;
-                  if (!isResponsable) return const SizedBox.shrink();
+                  final pending = ref.watch(roDemandesEnAttenteProvider).maybeWhen(
+                        data: (l) => l.length,
+                        orElse: () => 0,
+                      );
+                  final montre = (user?.peutValiderFile == true) || pending > 0;
+                  if (user == null || !montre) {
+                    return const SizedBox.shrink();
+                  }
+                  final libelle = user.jwtRoles.libelleHabilitation ??
+                      (pending > 0
+                          ? 'Responsable d’unité'
+                          : 'Responsable opérationnel');
                   return Padding(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                    child: _RoBanner(profil: user!.profilAcces),
+                    child: _RoBanner(
+                      libelle: libelle,
+                      isRo: user.isRo || (!user.isChefDept && pending > 0),
+                    ),
                   );
                 },
               ),
@@ -518,6 +531,25 @@ class _DashboardPage extends ConsumerWidget {
                     iconBg: const Color(0xFFEEF2FF),
                     iconColor: AppTheme.primary,
                     onTap: () => context.push('/pointage'),
+                  ),
+                  ...userAsync.when(
+                    data: (user) {
+                      if (user?.peutConfigurerPresence != true) {
+                        return const <Widget>[];
+                      }
+                      return [
+                        _ServiceCard(
+                          title: 'Sites pointage',
+                          subtitle: 'GPS site',
+                          icon: Icons.place_rounded,
+                          iconBg: const Color(0xFFECFEFF),
+                          iconColor: const Color(0xFF0891B2),
+                          onTap: () => context.push('/presence/sites'),
+                        ),
+                      ];
+                    },
+                    loading: () => const <Widget>[],
+                    error: (_, __) => const <Widget>[],
                   ),
                   _ServiceCard(
                     title: 'Congés',
@@ -557,7 +589,19 @@ class _DashboardPage extends ConsumerWidget {
                     icon: Icons.star_outline_rounded,
                     iconBg: const Color(0xFFFEF3C7),
                     iconColor: const Color(0xFFD97706),
+                    badge: ref.watch(evaluationsBadgeCountProvider).maybeWhen(
+                          data: (n) => n,
+                          orElse: () => 0,
+                        ),
                     onTap: () => context.push('/evaluations'),
+                  ),
+                  _ServiceCard(
+                    title: 'Organigramme',
+                    subtitle: 'Hiérarchie',
+                    icon: Icons.account_tree_outlined,
+                    iconBg: const Color(0xFFECFDF5),
+                    iconColor: const Color(0xFF059669),
+                    onTap: () => context.push('/organigramme'),
                   ),
                   _ServiceCard(
                     title: 'Autorisation',
@@ -597,6 +641,7 @@ class _ServiceCard extends StatelessWidget {
   final Color iconBg;
   final Color iconColor;
   final VoidCallback onTap;
+  final int badge;
 
   const _ServiceCard({
     required this.title,
@@ -605,6 +650,7 @@ class _ServiceCard extends StatelessWidget {
     required this.iconBg,
     required this.iconColor,
     required this.onTap,
+    this.badge = 0,
   });
 
   @override
@@ -625,14 +671,38 @@ class _ServiceCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: iconBg,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: iconColor, size: 22),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: iconBg,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, color: iconColor, size: 22),
+                  ),
+                  const Spacer(),
+                  if (badge > 0)
+                    Container(
+                      constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      decoration: BoxDecoration(
+                        color: AppTheme.error,
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        badge > 9 ? '9+' : '$badge',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                ],
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -668,10 +738,15 @@ class _DemandesPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final userAsync = ref.watch(collaborateurNotifierProvider);
-    final isResponsable = userAsync.maybeWhen(
-      data: (u) => u?.isResponsable ?? false,
+    final pendingCount = ref.watch(roDemandesEnAttenteProvider).maybeWhen(
+          data: (l) => l.length,
+          orElse: () => 0,
+        );
+    final peutValiderFile = userAsync.maybeWhen(
+      data: (u) => u?.peutValiderFile ?? false,
       orElse: () => false,
     );
+    final montreFileValidation = peutValiderFile || pendingCount > 0;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -683,9 +758,9 @@ class _DemandesPage extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // ── Section RO : validation des demandes de l'unité ──────────────
-          if (isResponsable) ...[
-            _SectionTitle(title: 'En tant que responsable'),
+          // ── Section manager nœud : validation 1er niveau ────────
+          if (montreFileValidation) ...[
+            _SectionTitle(title: 'En tant que responsable d’unité'),
             const SizedBox(height: 8),
             const _RoValidationCard(),
             const SizedBox(height: 20),
@@ -720,10 +795,10 @@ class _DemandesPage extends ConsumerWidget {
             onTap: () => context.push('/documents'),
           ),
           const SizedBox(height: 12),
-          if (isResponsable) ...[
+          if (peutValiderFile) ...[
             _DemandeChoiceCard(
               title: 'Formations',
-              subtitle: 'Unite ou collaborateurs cibles',
+              subtitle: 'Unité ou collaborateurs cibles',
               icon: Icons.school_rounded,
               iconBg: const Color(0xFFEFF6FF),
               iconColor: const Color(0xFF2563EB),
@@ -873,13 +948,12 @@ class _RoValidationCard extends ConsumerWidget {
 }
 
 class _RoBanner extends StatelessWidget {
-  final String profil;
-  const _RoBanner({required this.profil});
+  final String libelle;
+  final bool isRo;
+  const _RoBanner({required this.libelle, required this.isRo});
 
   @override
   Widget build(BuildContext context) {
-    final isRo = profil == 'RO';
-    final label = isRo ? 'Responsable Opérationnel' : 'Chef de Département';
     final color = isRo ? const Color(0xFF0D9488) : const Color(0xFF2563EB);
 
     return InkWell(
@@ -912,7 +986,7 @@ class _RoBanner extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Demandes à valider',
+                    'File de validation',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
@@ -921,7 +995,7 @@ class _RoBanner extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'Votre unité a des demandes en attente de votre validation',
+                    '$libelle — demandes de votre nœud à valider',
                     style: const TextStyle(
                       fontSize: 12,
                       color: Color(0xFF64748B),

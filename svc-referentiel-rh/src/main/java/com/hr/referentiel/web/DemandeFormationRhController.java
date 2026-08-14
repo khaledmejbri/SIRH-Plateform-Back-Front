@@ -46,7 +46,7 @@ public class DemandeFormationRhController {
 	}
 
 	@GetMapping("/liste")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<List<DemandeFormationRhResponse>> listerPourRh(
 			@RequestParam(name = "statut", required = false) StatutDemandeFormationRh statut) {
 		return ResponseEntity.ok(demandeFormationRhService.listerPourRh(statut));
@@ -66,7 +66,7 @@ public class DemandeFormationRhController {
 	}
 
 	@PostMapping("/{identifiant}/integrer-plan")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<DemandeFormationRhResponse> integrerPlan(
 			@PathVariable UUID identifiant,
 			@RequestBody(required = false) DemandeFormationIntegrationRequest requete) {
@@ -74,7 +74,7 @@ public class DemandeFormationRhController {
 	}
 
 	@PostMapping("/{identifiant}/refuser")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<DemandeFormationRhResponse> refuser(
 			@PathVariable UUID identifiant,
 			@Valid @RequestBody DemandeRefusRequest requete) {

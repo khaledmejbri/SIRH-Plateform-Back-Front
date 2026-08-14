@@ -13,78 +13,102 @@ import com.hr.evaluation.entity.EvaluationAnswer;
 import com.hr.evaluation.entity.EvaluationQuestion;
 import com.hr.evaluation.entity.SkillAnswer;
 import com.hr.evaluation.entity.TechnicalQuestion;
-import com.hr.evaluation.repository.EvaluationRepository;
 import com.hr.evaluation.repository.EvaluationQuestionRepository;
 import com.hr.evaluation.repository.SkillAnswerRepository;
 import com.hr.evaluation.repository.TechnicalQuestionRepository;
+import com.hr.evaluation.security.EvaluationAccessService;
 import com.hr.evaluation.service.EvaluationScoringService;
 import com.hr.evaluation.service.EvaluationWorkflowService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
  * REST Controller for mobile evaluation feature.
- * Provides endpoints for the Flutter mobile app to interact with evaluations.
+ * Ownership : collaborateur = ses évaluations ; manager = périmètre supérieur uniquement.
  */
 @RestController
-@RequestMapping("/api/rh/v1/evaluations")
+@RequestMapping("/api/rh/v1/mobile/evaluations")
 @CrossOrigin(origins = "*", maxAge = 3600)
+@PreAuthorize(EvaluationSecurityExpressions.MOBILE_USER)
 public class EvaluationMobileController {
 
     private final EvaluationWorkflowService workflowService;
-    private final EvaluationRepository evaluationRepository;
     private final EvaluationQuestionRepository questionRepository;
     private final TechnicalQuestionRepository technicalQuestionRepository;
     private final SkillAnswerRepository skillAnswerRepository;
     private final EvaluationScoringService scoringService;
+    private final EvaluationAccessService evaluationAccess;
 
     public EvaluationMobileController(
             EvaluationWorkflowService workflowService,
-            EvaluationRepository evaluationRepository,
             EvaluationQuestionRepository questionRepository,
             TechnicalQuestionRepository technicalQuestionRepository,
             SkillAnswerRepository skillAnswerRepository,
-            EvaluationScoringService scoringService) {
+            EvaluationScoringService scoringService,
+            EvaluationAccessService evaluationAccess) {
         this.workflowService = workflowService;
-        this.evaluationRepository = evaluationRepository;
         this.questionRepository = questionRepository;
         this.technicalQuestionRepository = technicalQuestionRepository;
         this.skillAnswerRepository = skillAnswerRepository;
         this.scoringService = scoringService;
+        this.evaluationAccess = evaluationAccess;
     }
 
     /**
      * Get all evaluations for the authenticated user (collaborator).
      */
     @GetMapping("/moi")
-    public ResponseEntity<List<EvaluationItemResponse>> getMyEvaluations() {
-        UUID collaborateurId = getCurrentUserId();
+    public ResponseEntity<List<EvaluationItemResponse>> getMyEvaluations(
+            @RequestParam(name = "ensure", defaultValue = "false") boolean ensure,
+            @RequestParam(name = "niveau_seniorite", required = false) String niveauSenioriteIgnored,
+            @RequestParam(name = "role_metier", required = false) String roleMetierIgnored) {
+        UUID collaborateurId = evaluationAccess.requireCurrentActorId();
+        // E4-R11 : params matching client ignorés ; ensure ne crée plus d'évaluation (activation only)
+        if (ensure) {
+            try {
+                workflowService.assurerEvaluationPourCollaborateur(
+                        collaborateurId, collaborateurId, null, null);
+            } catch (IllegalStateException ex) {
+                // Pas de campagne active : liste vide
+            }
+        }
         List<Evaluation> evaluations = workflowService.listerEvaluationsCollaborateur(collaborateurId);
 
         List<EvaluationItemResponse> response = new ArrayList<>();
         for (Evaluation eval : evaluations) {
-            response.add(new EvaluationItemResponse(
-                eval.getId().toString(),
-                eval.getCampaign().getNom(),
-                eval.getStatut().name(),
-                eval.getSuperieurIdentifiant().toString(),
-                eval.getEtapeActuelle() != null ? eval.getEtapeActuelle().name() : "EVALUATION_GENERALE",
-                eval.getScoreSur20(),
-                eval.getCreeLe()
-            ));
+            if (eval.getStatut() == com.hr.evaluation.domain.StatutEvaluationRh.ARCHIVEE) {
+                continue;
+            }
+            response.add(toItem(eval));
         }
 
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/ensure")
+    public ResponseEntity<?> ensureMyEvaluation(
+            @RequestBody(required = false) Map<String, String> bodyIgnored) {
+        UUID collaborateurId = evaluationAccess.requireCurrentActorId();
+        // Matching client déprécié — retourne l'éval existante si présente, sinon 204
+        Evaluation evaluation = null;
+        try {
+            evaluation = workflowService.assurerEvaluationPourCollaborateur(
+                    collaborateurId, collaborateurId, null, null);
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.ok(List.of());
+        }
+        if (evaluation == null) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(toItem(evaluation));
     }
 
     /**
@@ -93,17 +117,13 @@ public class EvaluationMobileController {
     @GetMapping("/{id}/questions/generales")
     public ResponseEntity<List<QuestionResponse>> getGeneralQuestions(
             @PathVariable UUID id) {
-        verifyOwnership(id);
+        evaluationAccess.requireParticipantEvaluation(id);
         
         Evaluation evaluation = workflowService.obtenirEvaluation(id);
         
         // Check campaign and template
         if (evaluation.getCampaign() == null) {
             throw new IllegalStateException("L'évaluation n'a pas de campagne associée");
-        }
-        
-        if (evaluation.getEtapeActuelle() == EvaluationStep.EVALUATION_TECHNIQUE) {
-            throw new IllegalStateException("L'évaluation est déjà passée à l'étape technique");
         }
 
         // Get template from campaign
@@ -155,7 +175,7 @@ public class EvaluationMobileController {
     public ResponseEntity<Void> answerGeneralQuestion(
             @PathVariable UUID id,
             @Valid @RequestBody EvaluationAnswerRequest request) {
-        verifyOwnership(id);
+        evaluationAccess.requireCollaborateurEvaluation(id);
 
         UUID questionId = UUID.fromString(request.getQuestionId());
         
@@ -175,7 +195,7 @@ public class EvaluationMobileController {
     @GetMapping("/{id}/questions/techniques")
     public ResponseEntity<List<TechnicalQuestionResponse>> getTechnicalQuestions(
             @PathVariable UUID id) {
-        verifyOwnership(id);
+        evaluationAccess.requireParticipantEvaluation(id);
 
         Evaluation evaluation = workflowService.obtenirEvaluation(id);
 
@@ -183,10 +203,20 @@ public class EvaluationMobileController {
             throw new IllegalStateException("L'évaluation n'est pas encore à l'étape technique");
         }
 
-        if (evaluation.getCampaign().getTemplateCompetence() != null) {
-            var template = evaluation.getCampaign().getTemplateCompetence();
+        var templateCompetence = evaluation.getTemplateCompetenceAssigne() != null
+                ? evaluation.getTemplateCompetenceAssigne()
+                : evaluation.getCampaign().getTemplateCompetence();
+
+        if (templateCompetence == null && evaluation.getNiveauSeniorite() != null) {
+            templateCompetence = workflowService.resoudreTemplateCompetence(
+                    evaluation.getNiveauSeniorite(),
+                    evaluation.getRoleMetier(),
+                    evaluation.getCampaign());
+        }
+
+        if (templateCompetence != null) {
             List<EvaluationQuestion> questions = questionRepository
-                    .findByTemplateIdAndActifTrueOrderByOrdreAsc(template.getId());
+                    .findByTemplateIdAndActifTrueOrderByOrdreAsc(templateCompetence.getId());
 
             List<TechnicalQuestionResponse> response = new ArrayList<>();
             for (EvaluationQuestion q : questions) {
@@ -203,7 +233,7 @@ public class EvaluationMobileController {
                         q.getDescription(),
                         q.getLabelsEchelle() != null && !q.getLabelsEchelle().isEmpty()
                                 ? String.join(",", q.getLabelsEchelle())
-                                : "Beginner,Supervised,Autonomous,Advanced,Expert",
+                                : "Débutant,Supervisé,Autonome,Avancé,Expert",
                         q.getOrdre(),
                         note != null ? skillName(note) : null,
                         existingAnswer.map(EvaluationAnswer::getReponseCollaborateur).orElse(null)
@@ -216,7 +246,10 @@ public class EvaluationMobileController {
         // Get technical template from campaign
         var technicalTemplate = evaluation.getCampaign().getTemplateTechnique();
         if (technicalTemplate == null) {
-            throw new IllegalStateException("La campagne n'a pas de template technique configuré");
+            throw new IllegalStateException(
+                    "Aucun template de compétences pour le grade "
+                            + (evaluation.getNiveauSeniorite() != null ? evaluation.getNiveauSeniorite() : "inconnu")
+                            + ". Publiez un template TECHNIQUE avec ce niveau côté admin.");
         }
 
         // Get questions for this template and user's profile
@@ -251,7 +284,7 @@ public class EvaluationMobileController {
     public ResponseEntity<Void> answerTechnicalQuestion(
             @PathVariable UUID id,
             @Valid @RequestBody TechnicalAnswerRequest request) {
-        verifyOwnership(id);
+        evaluationAccess.requireCollaborateurEvaluation(id);
 
         UUID questionId = UUID.fromString(request.getQuestionId());
         SkillLevel niveau = SkillLevel.valueOf(request.getNiveau().toUpperCase());
@@ -278,13 +311,13 @@ public class EvaluationMobileController {
 
     @GetMapping("/{id}/reponses")
     public ResponseEntity<List<EvaluationAnswer>> getAnswers(@PathVariable UUID id) {
-        verifyOwnership(id);
+        evaluationAccess.requireParticipantEvaluation(id);
         return ResponseEntity.ok(workflowService.obtenirReponsesEvaluation(id));
     }
 
     @GetMapping("/{id}/analytics")
     public ResponseEntity<EvaluationAnalyticsResponse> getAnalytics(@PathVariable UUID id) {
-        verifyOwnership(id);
+        evaluationAccess.requireParticipantEvaluation(id);
         EvaluationAnalyticsResponse analytics = scoringService.analyser(
                 workflowService.obtenirReponsesEvaluation(id),
                 workflowService.obtenirReponsesTechniques(id)
@@ -294,19 +327,11 @@ public class EvaluationMobileController {
 
     @GetMapping("/manager/pending")
     public ResponseEntity<List<EvaluationItemResponse>> getManagerEvaluations() {
-        UUID managerId = getCurrentUserId();
+        UUID managerId = evaluationAccess.requireCurrentActorId();
         List<Evaluation> evaluations = workflowService.listerEvaluationsManager(managerId);
         List<EvaluationItemResponse> response = new ArrayList<>();
         for (Evaluation eval : evaluations) {
-            response.add(new EvaluationItemResponse(
-                    eval.getId().toString(),
-                    eval.getCampaign().getNom(),
-                    eval.getStatut().name(),
-                    eval.getSuperieurIdentifiant().toString(),
-                    eval.getEtapeActuelle() != null ? eval.getEtapeActuelle().name() : "EVALUATION_GENERALE",
-                    eval.getScoreSur20(),
-                    eval.getCreeLe()
-            ));
+            response.add(toItem(eval));
         }
         return ResponseEntity.ok(response);
     }
@@ -315,7 +340,7 @@ public class EvaluationMobileController {
     public ResponseEntity<Void> answerGeneralQuestionAsManager(
             @PathVariable UUID id,
             @Valid @RequestBody EvaluationAnswerRequest request) {
-        verifyOwnership(id);
+        evaluationAccess.requireManagerEvaluation(id);
         workflowService.repondreQuestionManager(
                 id,
                 UUID.fromString(request.getQuestionId()),
@@ -330,7 +355,7 @@ public class EvaluationMobileController {
     public ResponseEntity<Void> answerTechnicalQuestionAsManager(
             @PathVariable UUID id,
             @Valid @RequestBody TechnicalAnswerRequest request) {
-        verifyOwnership(id);
+        evaluationAccess.requireManagerEvaluation(id);
         SkillLevel niveau = SkillLevel.valueOf(request.getNiveau().toUpperCase());
         UUID questionId = UUID.fromString(request.getQuestionId());
         if (questionRepository.findById(questionId).isPresent()) {
@@ -357,7 +382,7 @@ public class EvaluationMobileController {
      */
     @PostMapping("/{id}/passer-technique")
     public ResponseEntity<Void> moveToTechnicalStep(@PathVariable UUID id) {
-        verifyOwnership(id);
+        evaluationAccess.requireCollaborateurEvaluation(id);
         workflowService.passerAEtapeTechnique(id);
         return ResponseEntity.ok().build();
     }
@@ -367,7 +392,7 @@ public class EvaluationMobileController {
      */
     @PostMapping("/{id}/validate/collaborator")
     public ResponseEntity<Void> validateAsCollaborator(@PathVariable UUID id) {
-        verifyOwnership(id);
+        evaluationAccess.requireCollaborateurEvaluation(id);
         workflowService.validerParCollaborateur(id);
         return ResponseEntity.ok().build();
     }
@@ -377,70 +402,31 @@ public class EvaluationMobileController {
      */
     @GetMapping("/{id}")
     public ResponseEntity<EvaluationItemResponse> getEvaluationDetails(@PathVariable UUID id) {
-        verifyOwnership(id);
-        Evaluation evaluation = workflowService.obtenirEvaluation(id);
+        Evaluation evaluation = evaluationAccess.requireParticipantEvaluation(id);
         
         // Add null check for campaign
         if (evaluation.getCampaign() == null) {
             throw new IllegalStateException("L'évaluation n'a pas de campagne associée");
         }
 
-        return ResponseEntity.ok(new EvaluationItemResponse(
-            evaluation.getId().toString(),
-            evaluation.getCampaign().getNom(),
-            evaluation.getStatut().name(),
-            evaluation.getSuperieurIdentifiant().toString(),
-            evaluation.getEtapeActuelle() != null ? evaluation.getEtapeActuelle().name() : "EVALUATION_GENERALE",
-            evaluation.getScoreSur20(),
-            evaluation.getCreeLe()
-        ));
+        return ResponseEntity.ok(toItem(evaluation));
     }
 
-    /**
-     * Extract current user ID from Spring Security context (JWT token).
-     * Reads "identifiant_utilisateur" claim injected by svc-identite-acces.
-     */
-    private UUID getCurrentUserId() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) {
-            throw new SecurityException("Utilisateur non authentifié");
-        }
-        Object principal = authentication.getPrincipal();
-        if (principal instanceof Jwt jwt) {
-            // Primary: custom claim set by svc-identite-acces
-            String idUser = jwt.getClaimAsString("identifiant_utilisateur");
-            if (idUser != null && !idUser.isBlank()) {
-                try {
-                    return UUID.fromString(idUser);
-                } catch (IllegalArgumentException e) {
-                    throw new SecurityException("ID utilisateur invalide dans le token JWT: " + idUser);
-                }
-            }
-            // Fallback: standard JWT subject
-            String subject = jwt.getSubject();
-            if (subject != null && !subject.isBlank()) {
-                try {
-                    return UUID.fromString(subject);
-                } catch (IllegalArgumentException ignored) {
-                    // subject may be a username, not a UUID
-                }
-            }
-        }
-        throw new SecurityException("Impossible d'extraire l'ID utilisateur du token JWT");
-    }
-
-    /**
-     * Verify that the current user owns or is associated with this evaluation.
-     */
-    private void verifyOwnership(UUID evaluationId) {
-        UUID currentUserId = getCurrentUserId();
-        Evaluation evaluation = workflowService.obtenirEvaluation(evaluationId);
-        
-        // Check if user is the collaborator or the manager
-        if (!evaluation.getCollaborateurIdentifiant().equals(currentUserId) &&
-            !evaluation.getSuperieurIdentifiant().equals(currentUserId)) {
-            throw new SecurityException("Accès non autorisé à cette évaluation");
-        }
+    private EvaluationItemResponse toItem(Evaluation evaluation) {
+        String campaignNom = evaluation.getCampaign() != null
+                ? evaluation.getCampaign().getNom()
+                : "Campagne évaluation";
+        return new EvaluationItemResponse(
+                evaluation.getId().toString(),
+                campaignNom,
+                evaluation.getStatut().name(),
+                evaluation.getSuperieurIdentifiant().toString(),
+                evaluation.getEtapeActuelle() != null
+                        ? evaluation.getEtapeActuelle().name()
+                        : "EVALUATION_GENERALE",
+                evaluation.getScoreSur20(),
+                evaluation.getCreeLe()
+        );
     }
 
     private String skillName(Integer score) {

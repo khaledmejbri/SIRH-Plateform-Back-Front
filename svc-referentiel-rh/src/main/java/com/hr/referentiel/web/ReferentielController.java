@@ -20,20 +20,20 @@ public class ReferentielController {
 	private final ReferentielRhService referentielRhService;
 	private final com.hr.referentiel.service.CollaborateurConnecteService collaborateurConnecteService;
 
-	public ReferentielController(ReferentielRhService referentielRhService, 
+	public ReferentielController(ReferentielRhService referentielRhService,
 			com.hr.referentiel.service.CollaborateurConnecteService collaborateurConnecteService) {
 		this.referentielRhService = referentielRhService;
 		this.collaborateurConnecteService = collaborateurConnecteService;
 	}
 
 	@GetMapping("/unites")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<List<UniteResponse>> listerUnitesActives() {
 		return ResponseEntity.ok(referentielRhService.listerUnitesActives());
 	}
 
 	@GetMapping("/unites/{identifiant}")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<Object> obtenirUnite(@PathVariable UUID identifiant) {
 		return referentielRhService.obtenirUnite(identifiant)
 				.<ResponseEntity<Object>>map(ResponseEntity::ok)
@@ -42,13 +42,13 @@ public class ReferentielController {
 	}
 
 	@PostMapping("/unites")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<UniteResponse> creerUnite(@Valid @RequestBody UniteCreationRequest requete) {
 		return ResponseEntity.status(HttpStatus.CREATED).body(referentielRhService.creerUnite(requete));
 	}
 
 	@PutMapping("/unites/{identifiant}")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<Object> mettreAJourUnite(@PathVariable UUID identifiant,
 			@Valid @RequestBody UniteMiseAJourRequest requete) {
 		return referentielRhService.mettreAJourUnite(identifiant, requete)
@@ -58,7 +58,7 @@ public class ReferentielController {
 	}
 
 	@GetMapping("/collaborateurs")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<PageReferentielResponse<CollaborateurResponse>> listerCollaborateurs(
 			@RequestParam(defaultValue = "0") int page,
 			@RequestParam(defaultValue = "20") int taille,
@@ -76,7 +76,7 @@ public class ReferentielController {
 	}
 
 	@GetMapping("/collaborateurs/{identifiant}")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<Object> obtenirCollaborateur(@PathVariable UUID identifiant) {
 		return referentielRhService.obtenirCollaborateur(identifiant)
 				.<ResponseEntity<Object>>map(ResponseEntity::ok)
@@ -85,7 +85,7 @@ public class ReferentielController {
 	}
 
 	@GetMapping("/collaborateurs/matricule/{matricule}")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<Object> obtenirCollaborateurParMatricule(@PathVariable String matricule) {
 		return referentielRhService.obtenirCollaborateurParMatricule(matricule)
 				.<ResponseEntity<Object>>map(ResponseEntity::ok)
@@ -94,19 +94,26 @@ public class ReferentielController {
 	}
 
 	@PostMapping("/collaborateurs")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<CollaborateurResponse> creerCollaborateur(
 			@Valid @RequestBody CollaborateurCreationRequest requete) {
 		return ResponseEntity.status(HttpStatus.CREATED).body(referentielRhService.creerCollaborateur(requete));
 	}
 
 	@PutMapping("/collaborateurs/{identifiant}")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<Object> mettreAJourCollaborateur(@PathVariable UUID identifiant,
 			@Valid @RequestBody CollaborateurMiseAJourRequest requete) {
 		return referentielRhService.mettreAJourCollaborateur(identifiant, requete)
 				.<ResponseEntity<Object>>map(ResponseEntity::ok)
 				.orElse(ResponseEntity.status(HttpStatus.NOT_FOUND)
 						.body(Map.of("erreur", "Collaborateur introuvable.")));
+	}
+
+	/** Population ACTIF pour activation campagne M07 (lecture BO / inter-service). */
+	@GetMapping("/collaborateurs/actifs-evaluation")
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
+	public ResponseEntity<List<CollaborateurEvaluationSnapshotResponse>> listerActifsEvaluation() {
+		return ResponseEntity.ok(referentielRhService.listerActifsPourEvaluation());
 	}
 }

@@ -1,23 +1,43 @@
-import { useState } from 'react';
+import { useMemo, useState, type ComponentType } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { clearToken } from '../api/auth';
+import { clearToken, getToken } from '../api/auth';
+import { canWriteBackoffice, isDirectionOnly } from '../auth/jwtRoles';
 import NotificationBell from './NotificationBell';
 
-const nav = [
+type NavItem = {
+  to: string;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  desc: string;
+  /** Visible uniquement en écriture RH/ADMIN */
+  writeOnly?: boolean;
+};
+
+const navAll: NavItem[] = [
   { to: '/app/accueil',                   label: 'Accueil',                    icon: IconHome,     desc: 'Tableau de bord' },
-  { to: '/app/plaintes',                  label: 'Plaintes',                   icon: IconChat,     desc: 'Suivi et traitement' },
+  { to: '/app/plaintes',                  label: 'Plaintes',                   icon: IconChat,     desc: 'Suivi' },
   { to: '/app/demandes-administratives',  label: 'Demandes administratives',   icon: IconFile,     desc: 'Congés, autorisations' },
   { to: '/app/documents-administratifs',  label: 'Documents administratifs',   icon: IconDoc,      desc: 'Attestations, bulletins' },
   { to: '/app/formations',                label: 'Formations',                 icon: IconSchool,   desc: 'Plan annuel' },
   { to: '/app/evaluations',               label: 'Évaluations',                icon: IconStar,     desc: 'Campagnes & suivi' },
-  { to: '/app/collaborateurs',            label: 'Collaborateurs',             icon: IconUsers,    desc: 'Fiches et comptes' },
-  { to: '/app/structure',                 label: 'Structure RH',               icon: IconBuilding, desc: 'Départements & unités' },
-  { to: '/app/unites',                    label: 'Unités (référentiel)',        icon: IconBuilding, desc: 'Référentiel brut' },
+  { to: '/app/collaborateurs',            label: 'Collaborateurs',             icon: IconUsers,    desc: 'Fiches' },
+  { to: '/app/organigramme',              label: 'Organigramme',               icon: IconTree,     desc: 'Hiérarchie visuelle' },
+  { to: '/app/pointage',                  label: 'Sites de pointage',          icon: IconQr,       desc: 'Pointage QR' },
+  { to: '/app/structure',                 label: 'Structure RH',               icon: IconBuilding, desc: 'Départements & unités', writeOnly: true },
+  { to: '/app/unites',                    label: 'Unités (référentiel)',        icon: IconBuilding, desc: 'Référentiel brut', writeOnly: true },
 ];
 
 export default function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
+  const token = getToken();
+  const direction = isDirectionOnly(token);
+  const canWrite = canWriteBackoffice(token);
+
+  const nav = useMemo(
+    () => navAll.filter((item) => !item.writeOnly || canWrite),
+    [canWrite],
+  );
 
   function logout() {
     clearToken();
@@ -37,17 +57,17 @@ export default function AppShell() {
       )}
 
       <aside className={`shell__sidebar ${sidebarOpen ? 'shell__sidebar--open' : ''}`}>
-        {/* Brand */}
         <div className="shell__brand">
           <div className="shell__logo" aria-hidden />
           <div>
             <div className="shell__brand-title">Plateforme RH</div>
-            <div className="shell__brand-sub">Administration</div>
+            <div className="shell__brand-sub">
+              {direction ? 'Consultation' : 'Administration'}
+            </div>
           </div>
         </div>
 
-        {/* Nav */}
-        <nav className="shell__nav">
+        <nav className="shell__nav" aria-label="Navigation principale">
           {nav.map(item => (
             <NavLink key={item.to} to={item.to}
               className={({ isActive }) => `shell__nav-item${isActive ? ' shell__nav-item--active' : ''}`}
@@ -64,7 +84,9 @@ export default function AppShell() {
 
       <div className="shell__main">
         <header className="shell__header">
-          <h1 className="shell__header-title">Espace Ressources Humaines</h1>
+          <h1 className="shell__header-title">
+            {direction ? 'Espace Direction' : 'Espace Ressources Humaines'}
+          </h1>
           <div className="shell__header-actions">
             <NotificationBell />
             <button type="button" className="btn btn--ghost" onClick={logout}>
@@ -72,8 +94,13 @@ export default function AppShell() {
             </button>
           </div>
         </header>
+        {direction ? (
+          <div className="alert alert--info" role="status" style={{ margin: '0 1.25rem', marginTop: 12 }}>
+            Consultation uniquement — vous ne pouvez pas modifier les données.
+          </div>
+        ) : null}
         <main className="shell__content anim-fade-in">
-          <Outlet />
+          <Outlet context={{ lectureSeule: direction }} />
         </main>
       </div>
     </div>
@@ -101,6 +128,12 @@ function IconUsers({ className }: { className?: string }) {
 function IconBuilding({ className }: { className?: string }) {
   return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v0M9 13v0M9 17v0" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
+function IconTree({ className }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 3v18M12 8h6a3 3 0 010 6h-6M12 8H8a3 3 0 000 6h4M12 14h5a2.5 2.5 0 010 5h-5M12 14H9a2.5 2.5 0 000 5h3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
 function IconStar({ className }: { className?: string }) {
   return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+function IconQr({ className }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 2h2v2h-2v-2zm4-2h2v6h-6v-2h2v-2h2v-2zm-4 4h2v2h-2v-2z" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }

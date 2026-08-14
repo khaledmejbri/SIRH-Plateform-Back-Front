@@ -43,6 +43,28 @@ public class Evaluation {
     @Column(name = "score_sur_20")
     private Integer scoreSur20;
 
+    /** Grade / niveau du collaborateur au moment de l'affectation (JUNIOR, SENIOR…). */
+    @Column(name = "niveau_seniorite", length = 32)
+    private String niveauSeniorite;
+
+    /** Snapshot famille métier (clé matching E4) — remplace l'usage produit de role_metier. */
+    @Column(name = "famille_metier_code", length = 64)
+    private String familleMetierCode;
+
+    /** Legacy — ne plus écrire ; lecture migration. */
+    @Column(name = "role_metier", length = 120)
+    private String roleMetier;
+
+    /** true si fiche sans famille_metier à la création (GENERIC seul). */
+    @Column(name = "profil_metier_incomplet", nullable = false)
+    private boolean profilMetierIncomplet = false;
+
+    /** Template technique résolu selon le grade (prioritaire sur celui de la campagne). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "template_competence_identifiant")
+    @JsonIgnore
+    private EvaluationTemplate templateCompetenceAssigne;
+
     @Column(name = "validation_collaborateur_le")
     private Instant validationCollaborateurLe;
 
@@ -92,6 +114,25 @@ public class Evaluation {
     
     public Integer getScoreSur20() { return scoreSur20; }
     public void setScoreSur20(Integer scoreSur20) { this.scoreSur20 = scoreSur20; }
+
+    public String getNiveauSeniorite() { return niveauSeniorite; }
+    public void setNiveauSeniorite(String niveauSeniorite) { this.niveauSeniorite = niveauSeniorite; }
+
+    public String getFamilleMetierCode() { return familleMetierCode; }
+    public void setFamilleMetierCode(String familleMetierCode) { this.familleMetierCode = familleMetierCode; }
+
+    public String getRoleMetier() { return roleMetier; }
+    public void setRoleMetier(String roleMetier) { this.roleMetier = roleMetier; }
+
+    public boolean isProfilMetierIncomplet() { return profilMetierIncomplet; }
+    public void setProfilMetierIncomplet(boolean profilMetierIncomplet) {
+        this.profilMetierIncomplet = profilMetierIncomplet;
+    }
+
+    public EvaluationTemplate getTemplateCompetenceAssigne() { return templateCompetenceAssigne; }
+    public void setTemplateCompetenceAssigne(EvaluationTemplate templateCompetenceAssigne) {
+        this.templateCompetenceAssigne = templateCompetenceAssigne;
+    }
     
     public Instant getValidationCollaborateurLe() { return validationCollaborateurLe; }
     public void setValidationCollaborateurLe(Instant validationCollaborateurLe) { 

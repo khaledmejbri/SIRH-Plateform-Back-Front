@@ -1,6 +1,7 @@
 package com.hr.referentiel.service;
 
 import com.hr.referentiel.config.CacheConfig;
+import com.hr.referentiel.domain.NiveauSeniorite;
 import com.hr.referentiel.domain.ProfilAccesCollaborateur;
 import com.hr.referentiel.dto.*;
 import com.hr.referentiel.entity.Collaborateur;
@@ -9,6 +10,7 @@ import com.hr.referentiel.kafka.CollaborateurCompteDemandeEvent;
 import com.hr.referentiel.repository.CollaborateurRepository;
 import com.hr.referentiel.repository.UniteOrganisationRepository;
 import com.hr.referentiel.kafka.CollaborateurCompteDemandePublisher;
+import com.hr.referentiel.web.ReferentielMetierException;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -22,7 +24,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
-import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -33,15 +35,18 @@ public class ReferentielRhService {
 	private final UniteOrganisationRepository uniteRepository;
 	private final CollaborateurRepository collaborateurRepository;
 	private final CollaborateurConnecteService collaborateurConnecteService;
+	private final FamilleMetierService familleMetierService;
 	private final ObjectProvider<CollaborateurCompteDemandePublisher> collaborateurCompteDemandePublisher;
 
 	public ReferentielRhService(UniteOrganisationRepository uniteRepository,
 			CollaborateurRepository collaborateurRepository,
 			CollaborateurConnecteService collaborateurConnecteService,
+			FamilleMetierService familleMetierService,
 			ObjectProvider<CollaborateurCompteDemandePublisher> collaborateurCompteDemandePublisher) {
 		this.uniteRepository = uniteRepository;
 		this.collaborateurRepository = collaborateurRepository;
 		this.collaborateurConnecteService = collaborateurConnecteService;
+		this.familleMetierService = familleMetierService;
 		this.collaborateurCompteDemandePublisher = collaborateurCompteDemandePublisher;
 	}
 
@@ -74,6 +79,12 @@ public class ReferentielRhService {
 					.orElseThrow(() -> new IllegalArgumentException("Unité parente introuvable."));
 			u.setParent(parent);
 		}
+		String type = trimToNull(req.getTypeNoeud());
+		if (type == null) {
+			type = u.getParent() == null ? "Département" : "Unité";
+		}
+		u.setTypeNoeud(type);
+		u.setTitrePoste(trimToNull(req.getTitrePoste()));
 		return toUniteResponse(uniteRepository.save(u));
 	}
 
@@ -94,6 +105,12 @@ public class ReferentielRhService {
 				UniteOrganisation parent = uniteRepository.findById(req.getParentIdentifiant())
 						.orElseThrow(() -> new IllegalArgumentException("Unité parente introuvable."));
 				u.setParent(parent);
+			}
+			if (req.getTypeNoeud() != null) {
+				u.setTypeNoeud(trimToNull(req.getTypeNoeud()));
+			}
+			if (req.getTitrePoste() != null) {
+				u.setTitrePoste(trimToNull(req.getTitrePoste()));
 			}
 			return toUniteResponse(uniteRepository.save(u));
 		});
@@ -164,13 +181,12 @@ public class ReferentielRhService {
 		c.setDepartementLibelle(trimToNull(req.getDepartementLibelle()));
 		c.setDateRecrutement(req.getDateRecrutement());
 		c.setStatut(req.getStatut().trim());
-		c.setProfilAcces(req.getProfilAcces() != null ? req.getProfilAcces().trim().toUpperCase() : "COLLABORATEUR");
+		ProfilAccesCollaborateur profil = parseProfilAcces(req.getProfilAcces());
+		c.setProfilAcces(profil.name());
+		appliquerProfilMetier(c, req.getFamilleMetierCode(), req.getNiveauSeniorite(), false);
 		c.setUnite(unite);
-		if (req.getSuperieurIdentifiant() != null) {
-			Collaborateur sup = collaborateurRepository.findById(req.getSuperieurIdentifiant())
-					.orElseThrow(() -> new IllegalArgumentException("Supérieur hiérarchique introuvable."));
-			c.setSuperieur(sup);
-		}
+		// H3-T1 / H3-R05 : superieur dérivé du manager du nœud ; saisie manuelle ignorée
+		c.setSuperieur(SuperieurHierarchieRules.resoudreSuperieurFiche(c, unite));
 
 		final boolean liaisonManuelleCompte = req.getCompteUtilisateurId() != null;
 		if (liaisonManuelleCompte) {
@@ -191,7 +207,6 @@ public class ReferentielRhService {
 		Collaborateur saved = collaborateurRepository.save(c);
 
 		if (!liaisonManuelleCompte) {
-			ProfilAccesCollaborateur profil = parseProfilAcces(req.getProfilAcces());
 			CollaborateurCompteDemandeEvent event = new CollaborateurCompteDemandeEvent(
 					saved.getId(),
 					saved.getMatricule(),
@@ -221,24 +236,14 @@ public class ReferentielRhService {
 	}
 
 	private static ProfilAccesCollaborateur parseProfilAcces(String raw) {
-		if (raw == null || raw.isBlank()) {
-			return ProfilAccesCollaborateur.COLLABORATEUR;
-		}
-		String key = raw.trim().toUpperCase(Locale.ROOT);
-		if ("RO".equals(key)) {
-			key = "RESPONSABLE";
-		}
-		try {
-			return ProfilAccesCollaborateur.valueOf(key);
-		} catch (IllegalArgumentException e) {
-			throw new IllegalArgumentException("profil_acces invalide : COLLABORATEUR, RESPONSABLE ou RO.");
-		}
+		return ProfilAccesCollaborateur.parse(raw);
 	}
 
 	@Transactional
 	@CacheEvict(value = { CacheConfig.CACHE_COLLABORATEUR_ID, CacheConfig.CACHE_COLLABORATEUR_MATRICULE }, allEntries = true)
 	public Optional<CollaborateurResponse> mettreAJourCollaborateur(UUID id, CollaborateurMiseAJourRequest req) {
 		return collaborateurRepository.findById(id).map(c -> {
+			String profilAvant = c.getProfilAcces();
 			if (req.getPrenom() != null) {
 				c.setPrenom(req.getPrenom().trim());
 			}
@@ -273,38 +278,113 @@ public class ReferentielRhService {
 				c.setStatut(req.getStatut().trim());
 			}
 			if (req.getProfilAcces() != null && !req.getProfilAcces().isBlank()) {
-				String profil = req.getProfilAcces().trim().toUpperCase();
-				if (!profil.equals("COLLABORATEUR") && !profil.equals("RESPONSABLE") && !profil.equals("RO")) {
-					throw new IllegalArgumentException("profil_acces invalide : COLLABORATEUR, RESPONSABLE ou RO.");
-				}
-				c.setProfilAcces(profil);
+				c.setProfilAcces(parseProfilAcces(req.getProfilAcces()).name());
+			}
+			if (req.getFamilleMetierCode() != null || req.getNiveauSeniorite() != null) {
+				appliquerProfilMetier(c, req.getFamilleMetierCode(), req.getNiveauSeniorite(), true);
 			}
 			if (req.getUniteIdentifiant() != null) {
 				UniteOrganisation unite = uniteRepository.findById(req.getUniteIdentifiant())
 						.orElseThrow(() -> new IllegalArgumentException("Unité introuvable."));
 				c.setUnite(unite);
 			}
-			if (req.getSuperieurIdentifiant() != null) {
-				if (req.getSuperieurIdentifiant().equals(id)) {
-					throw new IllegalArgumentException("Un collaborateur ne peut pas être son propre supérieur.");
-				}
-				Collaborateur sup = collaborateurRepository.findById(req.getSuperieurIdentifiant())
-						.orElseThrow(() -> new IllegalArgumentException("Supérieur hiérarchique introuvable."));
-				c.setSuperieur(sup);
+			// H3-T2 / H3-R05 : toujours dériver ; ignore superieur_identifiant divergent
+			if (c.getUnite() != null) {
+				Collaborateur cible = SuperieurHierarchieRules.resoudreSuperieurFiche(c, c.getUnite());
+				SuperieurHierarchieRules.appliquerSiChange(c, cible);
 			}
 			if (req.getCompteUtilisateurId() != null) {
 				c.setCompteUtilisateurId(req.getCompteUtilisateurId());
 			}
-			return toCollaborateurResponse(collaborateurRepository.save(c));
+			Collaborateur saved = collaborateurRepository.save(c);
+			publierMajRolesSiProfilChange(saved, profilAvant);
+			return toCollaborateurResponse(saved);
 		});
 	}
 
+	/**
+	 * Resynchronise les rôles JWT si {@code profil_acces} a réellement changé et qu'un compte
+	 * est déjà lié. Fiche sans compte : no-op. Même profil : pas d'événement Kafka.
+	 */
+	private void publierMajRolesSiProfilChange(Collaborateur saved, String profilAvant) {
+		if (saved.getCompteUtilisateurId() == null) {
+			return;
+		}
+		if (Objects.equals(profilAvant, saved.getProfilAcces())) {
+			return;
+		}
+		CollaborateurCompteDemandeEvent event = new CollaborateurCompteDemandeEvent(
+				saved.getId(),
+				saved.getMatricule(),
+				saved.getCourrielProfessionnel(),
+				saved.getPrenom(),
+				saved.getNom(),
+				saved.getProfilAcces(),
+				null,
+				CollaborateurCompteDemandeEvent.OPERATION_MAJ_ROLES,
+				saved.getCompteUtilisateurId());
+		registerKafkaCompteDemandeAfterCommit(saved.getId().toString(), event);
+	}
+
+	/**
+	 * Population ACTIF pour activation campagne M07 (E4) — snapshot matching serveur.
+	 */
+	@Transactional(readOnly = true)
+	public List<CollaborateurEvaluationSnapshotResponse> listerActifsPourEvaluation() {
+		return collaborateurRepository.findAllActifsWithUnite().stream()
+				.map(c -> new CollaborateurEvaluationSnapshotResponse(
+						c.getId(),
+						c.getStatut(),
+						c.getFamilleMetierCode(),
+						c.getNiveauSeniorite(),
+						c.getSuperieur() != null ? c.getSuperieur().getId() : null,
+						c.getProfilAcces()))
+				.toList();
+	}
+
+	/**
+	 * @param partialUpdate si true, null = ne pas toucher ; blank string = effacer
+	 */
+	private void appliquerProfilMetier(Collaborateur c, String familleCode, String niveauRaw, boolean partialUpdate) {
+		if (familleCode != null) {
+			String trimmed = familleCode.trim();
+			if (trimmed.isEmpty()) {
+				c.setFamilleMetierCode(null);
+			} else {
+				c.setFamilleMetierCode(familleMetierService.exigerActive(trimmed).getCode());
+			}
+		} else if (!partialUpdate) {
+			c.setFamilleMetierCode(null);
+		}
+
+		if (niveauRaw != null) {
+			String trimmed = niveauRaw.trim();
+			if (trimmed.isEmpty()) {
+				c.setNiveauSeniorite(null);
+			} else {
+				NiveauSeniorite niveau = NiveauSeniorite.parseOptional(trimmed)
+						.orElseThrow(() -> ReferentielMetierException.unprocessable(
+								NiveauSeniorite.MESSAGE_INVALIDE,
+								"Niveau de séniorité invalide : " + trimmed));
+				c.setNiveauSeniorite(niveau.name());
+			}
+		} else if (!partialUpdate) {
+			c.setNiveauSeniorite(null);
+		}
+	}
+
 	private UniteResponse toUniteResponse(UniteOrganisation u) {
+		String type = u.getTypeNoeud();
+		if (type == null || type.isBlank()) {
+			type = u.getParent() == null ? "Département" : "Unité";
+		}
 		return new UniteResponse(
 				u.getId(),
 				u.getCode(),
 				u.getLibelle(),
 				u.getParent() != null ? u.getParent().getId() : null,
+				type,
+				u.getTitrePoste(),
 				u.isActif(),
 				u.getCreeLe(),
 				u.getModifieLe());
@@ -329,6 +409,9 @@ public class ReferentielRhService {
 		r.setSuperieurIdentifiant(c.getSuperieur() != null ? c.getSuperieur().getId() : null);
 		r.setCompteUtilisateurId(c.getCompteUtilisateurId());
 		r.setProfilAcces(c.getProfilAcces());
+		r.setFamilleMetierCode(c.getFamilleMetierCode());
+		r.setFamilleMetierLibelle(familleMetierService.libelleOuNull(c.getFamilleMetierCode()));
+		r.setNiveauSeniorite(c.getNiveauSeniorite());
 		r.setCreeLe(c.getCreeLe());
 		r.setModifieLe(c.getModifieLe());
 		return r;

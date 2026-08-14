@@ -53,14 +53,14 @@ public class DemandeDocumentAdministratifRhController {
 
 	/** File d'attente RH triée par priorité SLA. */
 	@GetMapping("/file-attente")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<List<DemandeDocumentAdministratifRhResponse>> fileAttente() {
 		return ResponseEntity.ok(demandeDocumentAdministratifRhService.fileAttentePourRh());
 	}
 
 	/** Prendre la prochaine demande de la file (priorité SLA). */
 	@PostMapping("/prendre-prochaine")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<DemandeDocumentAdministratifRhResponse> prendreProchaine() {
 		return ResponseEntity.ok(demandeDocumentAdministratifRhService.prendreProchaineDeLaFile());
 	}
@@ -70,7 +70,7 @@ public class DemandeDocumentAdministratifRhController {
 	 * Anciens alias /accepter et /disponible fusionnés ici.
 	 */
 	@PostMapping("/{identifiant}/disponible")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<DemandeDocumentAdministratifRhResponse> marquerDisponible(
 			@PathVariable UUID identifiant,
 			@Valid @RequestBody DemandeDocumentDisponibleRequest requete,
@@ -84,7 +84,7 @@ public class DemandeDocumentAdministratifRhController {
 	 * Ancien alias /rejeter fusionné ici.
 	 */
 	@PostMapping("/{identifiant}/refuser")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<DemandeDocumentAdministratifRhResponse> refuser(
 			@PathVariable UUID identifiant,
 			@Valid @RequestBody DocumentRejetRhRequest requete,

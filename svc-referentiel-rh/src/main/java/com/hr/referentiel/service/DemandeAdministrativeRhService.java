@@ -11,6 +11,7 @@ import com.hr.referentiel.kafka.RhNotificationPublisher;
 import com.hr.referentiel.repository.CollaborateurRepository;
 import com.hr.referentiel.repository.DemandeAdministrativeRhRepository;
 import com.hr.referentiel.repository.DemandeAdminWorkflowHistoryRepository;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,13 +23,16 @@ import java.util.stream.Collectors;
 /**
  * CDC v2 §M01 — Demandes administratives avec notifications correctes à chaque étape.
  *
+ * Valideur 1er niveau = manager ACTIF du nœud d'unité d'affectation (snapshot à la création).
+ * Le champ fiche {@code superieur} est dérivé ; le JWT RO seul ne suffit pas.
+ *
  * Chaîne de notification par hiérarchie :
- *   Soumission           → RO de l'unité du demandeur (ou RH si pas de RO)
- *   Validation RO        → tous les RH actifs
- *   Refus RO             → demandeur
+ *   Soumission           → manager du nœud (ou RH si aucun)
+ *   Validation manager   → tous les RH actifs
+ *   Refus manager        → demandeur
  *   Approbation RRH      → demandeur
  *   Refus RRH            → demandeur
- *   Annulation demandeur → RO de l'unité (pour info)
+ *   Annulation demandeur → manager du nœud (pour info)
  */
 @Service
 public class DemandeAdministrativeRhService {
@@ -69,8 +73,9 @@ public class DemandeAdministrativeRhService {
 		d.setContenu(new HashMap<>(req.getContenu()));
 		DemandeAdministrativePeriodeHelper.appliquerPeriodeIndexee(d);
 
-		boolean aUnSuperieur = superieurActif(demandeur) != null;
-		d.setStatut(aUnSuperieur
+		Collaborateur valideurAttendu = managerNoeudActif(demandeur);
+		d.setValideurAttendu(valideurAttendu);
+		d.setStatut(valideurAttendu != null
 				? StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR
 				: StatutDemandeAdministrativeRh.EN_VALIDATION_RRH);
 
@@ -112,9 +117,9 @@ public class DemandeAdministrativeRhService {
 
 	@Transactional(readOnly = true)
 	public List<DemandeAdministrativeRhResponse> demandesEnAttenteRo(Jwt jwt) {
-		Collaborateur superieur = collaborateurConnecteService.exigerCollaborateur(jwt);
-		return demandeRepo.findByDemandeurSuperieurIdAndStatutOrderByCreeLeDesc(
-						superieur.getId(), StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR).stream()
+		Collaborateur manager = collaborateurConnecteService.exigerCollaborateur(jwt);
+		return demandeRepo.findByValideurAttenduIdAndStatutOrderByCreeLeDesc(
+						manager.getId(), StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR).stream()
 				.map(this::toResponse)
 				.collect(Collectors.toList());
 	}
@@ -155,11 +160,14 @@ public class DemandeAdministrativeRhService {
 				throw new IllegalArgumentException("Accès refusé.");
 			}
 		}
-		Collaborateur demandeur = collaborateurRepository.findDetailById(d.getDemandeur().getId())
-				.orElseThrow(() -> new IllegalStateException("Collaborateur introuvable."));
-		boolean avecRo = superieurActif(demandeur) != null;
-		return new DemandeAdministrativeSuiviResponse(d.getId(), d.getTypeDemande(), d.getStatut(),
-				avecRo, etapesAdministratif(d.getStatut(), avecRo));
+		// H2-R06 : étape supérieur = snapshot uniquement (pas de recalcul live → pas d'étape fantôme)
+		Collaborateur snapshot = d.getValideurAttendu();
+		boolean avecRo = snapshot != null;
+		DemandeAdministrativeSuiviResponse response = new DemandeAdministrativeSuiviResponse(
+				d.getId(), d.getTypeDemande(), d.getStatut(), avecRo,
+				etapesAdministratif(d.getStatut(), avecRo, snapshot));
+		enrichirValideurSuivi(response, snapshot, d.getStatut());
+		return response;
 	}
 
 	// ─── Validation RO ────────────────────────────────────────────────────────
@@ -308,24 +316,43 @@ public class DemandeAdministrativeRhService {
 	}
 
 	/**
-	 * Vérifie que le connecté est le RO de l'unité du demandeur et le retourne.
+	 * Vérifie que le connecté est le manager ACTIF du nœud (snapshot ou live) — sinon 403.
+	 * Le JWT {@code RO} d'un autre nœud ne suffit pas.
 	 */
 	private Collaborateur verifierEstRoDuDemandeurEtRetourner(Jwt jwt, DemandeAdministrativeRh d) {
 		Collaborateur connecte = collaborateurConnecteService.exigerCollaborateur(jwt);
-		Collaborateur demandeur = chargerDemandeurDetail(d);
-		Collaborateur superieur = superieurActif(demandeur);
-		if (superieur == null || !superieur.getId().equals(connecte.getId())) {
-			throw new IllegalArgumentException(
-					"Seul le Responsable Opérationnel (RO) de l'unité du demandeur peut valider cette étape.");
+		Collaborateur attendu = resoudreValideurAttendu(d);
+		if (attendu == null || !attendu.getId().equals(connecte.getId())) {
+			throw new AccessDeniedException(
+					"Seul le manager actif du nœud d'unité du demandeur peut valider cette étape.");
 		}
-		return superieur;
+		if (!"ACTIF".equalsIgnoreCase(connecte.getStatut())) {
+			throw new AccessDeniedException(
+					"Seul le manager actif du nœud d'unité du demandeur peut valider cette étape.");
+		}
+		return connecte;
 	}
 
-	private Collaborateur superieurActif(Collaborateur demandeur) {
-		if (demandeur == null || demandeur.getSuperieur() == null) return null;
-		Collaborateur superieur = demandeur.getSuperieur();
-		if (!"ACTIF".equalsIgnoreCase(superieur.getStatut())) return null;
-		return superieur;
+	/**
+	 * Snapshot stocké à la création ; repli live pour demandes legacy sans snapshot.
+	 */
+	private Collaborateur resoudreValideurAttendu(DemandeAdministrativeRh d) {
+		if (d.getValideurAttendu() != null) {
+			return d.getValideurAttendu();
+		}
+		return managerNoeudActif(chargerDemandeurDetail(d));
+	}
+
+	/** Manager ACTIF du nœud d'unité d'affectation — source de vérité M01 (pas le champ fiche superieur). */
+	private Collaborateur managerNoeudActif(Collaborateur demandeur) {
+		if (demandeur == null || demandeur.getUnite() == null || demandeur.getUnite().getManager() == null) {
+			return null;
+		}
+		Collaborateur manager = demandeur.getUnite().getManager();
+		if (!"ACTIF".equalsIgnoreCase(manager.getStatut())) {
+			return null;
+		}
+		return manager;
 	}
 
 	private static List<DemandeAdministrativeRh> filtrerStatut(
@@ -334,37 +361,73 @@ public class DemandeAdministrativeRhService {
 				: lignes.stream().filter(d -> d.getStatut() == s).collect(Collectors.toList());
 	}
 
+	private static final String LIBELLE_ROLE_VALIDEUR = "Responsable de service";
+	private static final String MSG_SKIP_RRH =
+			"Aucun responsable actif sur votre unité : votre demande est directement en validation RRH.";
+	private static final String MSG_ATTENTE_RO = "En attente du responsable de votre service.";
+
+	private static void enrichirValideurSuivi(DemandeAdministrativeSuiviResponse response,
+			Collaborateur snapshot, StatutDemandeAdministrativeRh statut) {
+		response.setValideurAttenduLibelleRole(LIBELLE_ROLE_VALIDEUR);
+		if (snapshot != null) {
+			response.setValideurAttenduIdentifiant(snapshot.getId());
+			response.setValideurAttenduMatricule(snapshot.getMatricule());
+			response.setValideurAttenduNomComplet(nomComplet(snapshot));
+			if (statut == StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR) {
+				response.setMessageExplication(MSG_ATTENTE_RO);
+			}
+		} else {
+			response.setMessageExplication(MSG_SKIP_RRH);
+		}
+	}
+
+	private static String nomComplet(Collaborateur c) {
+		String prenom = c.getPrenom() != null ? c.getPrenom().trim() : "";
+		String nom = c.getNom() != null ? c.getNom().trim() : "";
+		String full = (prenom + " " + nom).trim();
+		return full.isEmpty() ? null : full;
+	}
+
 	private static List<WorkflowEtapeResponse> etapesAdministratif(
-			StatutDemandeAdministrativeRh s, boolean avecRo) {
+			StatutDemandeAdministrativeRh s, boolean avecRo, Collaborateur snapshot) {
 		List<WorkflowEtapeResponse> etapes = new ArrayList<>();
 		etapes.add(new WorkflowEtapeResponse("DEPOT", "Demande enregistrée", true, false));
 		if (avecRo) {
-			boolean enCours  = s == StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR;
+			boolean enCours = s == StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR;
 			boolean terminee = s != StatutDemandeAdministrativeRh.EN_VALIDATION_SUPERIEUR
 					&& s != StatutDemandeAdministrativeRh.SOUMISE;
-			etapes.add(new WorkflowEtapeResponse("RO", "Validation Responsable Opérationnel", terminee, enCours));
+			String nom = snapshot != null ? nomComplet(snapshot) : null;
+			String libelleRo = nom != null
+					? "Validation — " + nom
+					: "Validation — responsable de service";
+			etapes.add(new WorkflowEtapeResponse("RO", libelleRo, terminee, enCours));
 		}
-		boolean rrhEnCours  = s == StatutDemandeAdministrativeRh.EN_VALIDATION_RRH;
+		boolean rrhEnCours = s == StatutDemandeAdministrativeRh.EN_VALIDATION_RRH;
 		boolean rrhTerminee = s == StatutDemandeAdministrativeRh.APPROUVEE
 				|| s == StatutDemandeAdministrativeRh.REFUSEE
 				|| s == StatutDemandeAdministrativeRh.ANNULEE;
 		etapes.add(new WorkflowEtapeResponse("RRH", "Approbation RRH", rrhTerminee, rrhEnCours));
 		String libelleFin = switch (s) {
 			case APPROUVEE -> "Approuvée ✓";
-			case REFUSEE   -> "Refusée";
-			case ANNULEE   -> "Annulée par le demandeur";
-			default        -> "Clôture";
+			case REFUSEE -> "Refusée";
+			case ANNULEE -> "Annulée par le demandeur";
+			default -> "Clôture";
 		};
-		boolean cloture = rrhTerminee;
-		etapes.add(new WorkflowEtapeResponse("CLOTURE", libelleFin, cloture, false));
+		etapes.add(new WorkflowEtapeResponse("CLOTURE", libelleFin, rrhTerminee, false));
 		return etapes;
 	}
 
 	private DemandeAdministrativeRhResponse toResponse(DemandeAdministrativeRh d) {
-		return new DemandeAdministrativeRhResponse(
+		DemandeAdministrativeRhResponse r = new DemandeAdministrativeRhResponse(
 				d.getId(), d.getTypeDemande(), d.getDemandeur().getId(), d.getStatut(),
 				d.getContenu(), d.getPeriodeDebut(), d.getPeriodeFin(),
 				d.getMotifRefus(), d.getCreeLe(), d.getModifieLe());
+		Collaborateur snapshot = d.getValideurAttendu();
+		if (snapshot != null) {
+			r.setValideurAttenduIdentifiant(snapshot.getId());
+			r.setValideurAttenduNomComplet(nomComplet(snapshot));
+		}
+		return r;
 	}
 
 	// ─── Workflow History ─────────────────────────────────────────────────────

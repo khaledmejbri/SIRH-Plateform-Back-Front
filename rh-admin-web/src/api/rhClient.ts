@@ -218,11 +218,44 @@ export type DemandeDocument = {
   cree_le: string;
 };
 
+export const PROFILS_ACCES = [
+  'COLLABORATEUR',
+  'RO',
+  'RESPONSABLE',
+  'RH',
+  'DIRECTION',
+  'ADMIN',
+] as const;
+
+export type ProfilAcces = (typeof PROFILS_ACCES)[number];
+
+export const LIBELLES_PROFIL_ACCES: Record<ProfilAcces, string> = {
+  COLLABORATEUR: 'Collaborateur',
+  RO: 'Responsable opérationnel',
+  RESPONSABLE: 'Chef de département',
+  RH: 'Responsable RH',
+  DIRECTION: 'Direction',
+  ADMIN: 'Admin technique',
+};
+
+export function libelleProfilAcces(code: string | null | undefined): string {
+  if (!code) return '—';
+  const key = code.toUpperCase() as ProfilAcces;
+  return LIBELLES_PROFIL_ACCES[key] ?? code;
+}
+
+export function isProfilAcces(value: string | null | undefined): value is ProfilAcces {
+  return !!value && (PROFILS_ACCES as readonly string[]).includes(value.toUpperCase());
+}
+
 export type CollaborateurRow = {
   identifiant: string;
   matricule: string;
   prenom: string;
-  name: string;
+  /** Champ API JSON (`nom`). */
+  nom?: string;
+  /** Alias historique front ; l’API expose `nom`. */
+  name?: string;
   courriel_professionnel?: string;
   poste_libelle?: string;
   fonction?: string;
@@ -233,10 +266,45 @@ export type CollaborateurRow = {
   date_recrutement?: string;
   superieur_identifiant?: string;
   unite?: Unite;
-  profil_acces?: string;
+  profil_acces?: ProfilAcces;
+  /** Matching M07 E2 — optionnel tant que backend non merge. */
+  famille_metier_code?: string | null;
+  famille_metier_libelle?: string | null;
+  niveau_seniorite?: string | null;
   statut: string;
   compte_utilisateur_id?: string;
 };
+
+export type FamilleMetierRow = {
+  code: string;
+  libelle: string;
+  actif: boolean;
+  systeme?: boolean;
+};
+
+export type NiveauSenioriteRow = {
+  code: string;
+  libelle: string;
+};
+
+/** Catalogue familles métier (E2). Fallback seed côté UI si 404. */
+export function getFamillesMetier(actifOnly = true) {
+  const q = actifOnly ? '?actif=true' : '';
+  return apiFetch(`/api/referentiel/v1/familles-metier${q}`).then((r) =>
+    handleRhResponse<FamilleMetierRow[]>(r),
+  );
+}
+
+/** Niveaux de séniorité fermés (E2). */
+export function getNiveauxSeniorite() {
+  return apiFetch('/api/referentiel/v1/niveaux-seniorite').then((r) =>
+    handleRhResponse<NiveauSenioriteRow[]>(r),
+  );
+}
+
+export function nomCollaborateur(c: Pick<CollaborateurRow, 'nom' | 'name'>): string {
+  return (c.nom ?? c.name ?? '').trim();
+}
 
 export type PageCollaborateurs = {
   contenu: CollaborateurRow[];
@@ -251,5 +319,99 @@ export type Unite = {
   code: string;
   libelle: string;
   parent_identifiant: string | null;
+  type_noeud?: string | null;
+  titre_poste?: string | null;
   actif: boolean;
 };
+
+export type OrganigrammeMembre = {
+  identifiant: string;
+  matricule: string;
+  prenom: string;
+  nom: string;
+  poste_libelle?: string | null;
+  profil_acces?: ProfilAcces | null;
+};
+
+export type OrganigrammeNoeud = {
+  identifiant: string;
+  code: string;
+  libelle: string;
+  type_noeud: string;
+  titre_poste?: string | null;
+  parent_identifiant: string | null;
+  actif: boolean;
+  manager?: OrganigrammeMembre | null;
+  membres: OrganigrammeMembre[];
+  enfants: OrganigrammeNoeud[];
+};
+
+export type Organigramme = {
+  racines: OrganigrammeNoeud[];
+};
+
+export function getOrganigramme(inclureInactifs = false) {
+  const q = inclureInactifs ? '?inclure_inactifs=true' : '';
+  return apiFetch(`/api/referentiel/v1/organigramme${q}`).then((r) =>
+    handleRhResponse<Organigramme>(r),
+  );
+}
+
+export function postOrganigrammeNoeud(body: {
+  code: string;
+  libelle: string;
+  type_noeud: string;
+  titre_poste?: string;
+  parent_identifiant?: string;
+  actif?: boolean;
+}) {
+  return apiFetch('/api/referentiel/v1/organigramme/noeuds', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then((r) => handleRhResponse<OrganigrammeNoeud>(r));
+}
+
+export function putOrganigrammeNoeud(
+  id: string,
+  body: {
+    libelle?: string;
+    type_noeud?: string;
+    titre_poste?: string;
+    parent_identifiant?: string;
+    detacher_du_parent?: boolean;
+    actif?: boolean;
+  },
+) {
+  return apiFetch(`/api/referentiel/v1/organigramme/noeuds/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then((r) => handleRhResponse<OrganigrammeNoeud>(r));
+}
+
+export function postOrganigrammeManager(
+  noeudId: string,
+  body: {
+    collaborateur_identifiant: string;
+    titre_poste?: string;
+  },
+) {
+  const payload: { collaborateur_identifiant: string; titre_poste?: string } = {
+    collaborateur_identifiant: body.collaborateur_identifiant,
+  };
+  if (body.titre_poste) {
+    payload.titre_poste = body.titre_poste;
+  }
+  return apiFetch(`/api/referentiel/v1/organigramme/noeuds/${noeudId}/manager`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then((r) => handleRhResponse<OrganigrammeNoeud>(r));
+}
+
+export function deleteOrganigrammeManager(noeudId: string) {
+  return apiFetch(`/api/referentiel/v1/organigramme/noeuds/${noeudId}/manager`, {
+    method: 'DELETE',
+  }).then((r) => handleRhResponse<OrganigrammeNoeud>(r));
+}

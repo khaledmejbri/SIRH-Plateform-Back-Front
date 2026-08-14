@@ -15,7 +15,7 @@ public interface CollaborateurRepository extends JpaRepository<Collaborateur, UU
 
 	boolean existsByMatriculeIgnoreCase(String matricule);
 
-	@EntityGraph(attributePaths = {"unite", "superieur"})
+	@EntityGraph(attributePaths = {"unite", "unite.manager", "superieur"})
 	@Query("select c from Collaborateur c where c.id = :id")
 	Optional<Collaborateur> findDetailById(@Param("id") UUID id);
 
@@ -64,4 +64,8 @@ public interface CollaborateurRepository extends JpaRepository<Collaborateur, UU
 	 */
 	@Query("select c from Collaborateur c where c.profilAcces = 'RH' and c.statut = 'ACTIF'")
 	java.util.List<Collaborateur> findAllRhActifs();
+
+	@EntityGraph(attributePaths = {"unite", "superieur"})
+	@Query("select c from Collaborateur c where c.statut = 'ACTIF'")
+	java.util.List<Collaborateur> findAllActifsWithUnite();
 }

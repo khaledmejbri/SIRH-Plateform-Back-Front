@@ -48,7 +48,7 @@ public class PlainteRhController {
 	 * CDC §M04 : tableau de bord inter-services pour plaintes externes.
 	 */
 	@GetMapping("/liste")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<List<PlainteRhResponse>> listerPourRh(
 			@RequestParam(name = "type_plainte", required = false) TypePlainteRh type,
 			@RequestParam(name = "statut", required = false) StatutPlainteRh statut) {
@@ -68,7 +68,7 @@ public class PlainteRhController {
 	}
 
 	@PatchMapping("/{identifiant}/statut")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<PlainteRhResponse> mettreAJourStatut(
 			@PathVariable UUID identifiant,
 			@Valid @RequestBody PlainteRhStatutMiseAJourRequest requete,

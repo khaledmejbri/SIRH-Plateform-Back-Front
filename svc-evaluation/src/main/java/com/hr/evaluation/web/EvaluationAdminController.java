@@ -25,11 +25,12 @@ import java.util.UUID;
 
 /**
  * Admin/RH Controller for evaluation management.
- * Provides endpoints for managing campaigns, templates, and monitoring evaluations.
+ * Lecture : RH | DIRECTION | ADMIN. Écriture campagnes/templates : RH | ADMIN.
  */
 @RestController
 @RequestMapping("/api/rh/v1/admin/evaluations")
 @CrossOrigin(origins = "*", maxAge = 3600)
+@PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_LECTURE)
 public class EvaluationAdminController {
 
     private final EvaluationCampaignService campaignService;
@@ -112,6 +113,7 @@ public class EvaluationAdminController {
     }
 
     @PostMapping("/campaigns")
+    @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
     public ResponseEntity<Map<String, Object>> createCampaign(
             @Valid @RequestBody Map<String, Object> request) {
         
@@ -123,7 +125,7 @@ public class EvaluationAdminController {
         Integer moisFin = (Integer) request.get("moisFin");
         UUID creePar = UUID.fromString((String) request.get("creePar"));
         
-        EvaluationCampaignType type = EvaluationCampaignType.valueOf(typeStr);
+        EvaluationCampaignType type = EvaluationCampaignService.parseTypeStrict(typeStr);
         
         EvaluationCampaign campaign = campaignService.creerCampagne(
             nom, description, type, annee, moisDebut, moisFin, creePar
@@ -138,18 +140,20 @@ public class EvaluationAdminController {
     }
 
     @PostMapping("/campaigns/{id}/activate")
-    public ResponseEntity<Void> activateCampaign(@PathVariable UUID id) {
-        campaignService.activerCampagne(id);
-        return ResponseEntity.ok().build();
+    @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
+    public ResponseEntity<CampaignActivationResult> activateCampaign(@PathVariable UUID id) {
+        return ResponseEntity.ok(campaignService.activerCampagne(id));
     }
 
     @PostMapping("/campaigns/{id}/terminate")
+    @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
     public ResponseEntity<Void> terminateCampaign(@PathVariable UUID id) {
         campaignService.terminerCampagne(id);
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/campaigns/{id}/assign-templates")
+    @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
     public ResponseEntity<Void> assignTemplates(
             @PathVariable UUID id,
             @RequestBody Map<String, String> request) {
@@ -188,6 +192,7 @@ public class EvaluationAdminController {
     }
 
     @PostMapping("/templates")
+    @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
     public ResponseEntity<Map<String, Object>> createTemplate(
             @Valid @RequestBody Map<String, Object> request) {
         
@@ -206,6 +211,7 @@ public class EvaluationAdminController {
     }
 
     @DeleteMapping("/templates/{id}")
+    @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
     public ResponseEntity<Void> deleteTemplate(@PathVariable UUID id) {
         templateService.desactiverTemplate(id);
         return ResponseEntity.ok().build();
@@ -234,6 +240,7 @@ public class EvaluationAdminController {
     }
 
     @PostMapping("/templates/{id}/questions")
+    @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
     public ResponseEntity<Map<String, Object>> addQuestion(
             @PathVariable UUID id,
             @Valid @RequestBody Map<String, Object> request) {
@@ -264,6 +271,7 @@ public class EvaluationAdminController {
     }
 
     @DeleteMapping("/templates/{templateId}/questions/{questionId}")
+    @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
     public ResponseEntity<Void> deleteQuestion(
             @PathVariable UUID templateId,
             @PathVariable UUID questionId) {
@@ -277,7 +285,7 @@ public class EvaluationAdminController {
      * Create template with DTO (enhanced version)
      */
     @PostMapping("/v2")
-    @PreAuthorize("hasAnyRole('RH', 'ADMIN')")
+    @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
     public ResponseEntity<EvaluationTemplate> createTemplateV2(
             @Valid @RequestBody CreateTemplateRequest request,
             @RequestParam UUID userId) {
@@ -290,7 +298,6 @@ public class EvaluationAdminController {
      * Get template with questions
      */
     @GetMapping("/v2/{templateId}")
-    @PreAuthorize("hasAnyRole('RH', 'ADMIN', 'RO', 'COLLABORATOR')")
     public ResponseEntity<EvaluationTemplate> getTemplateV2(@PathVariable UUID templateId) {
         EvaluationTemplate template = enhancedTemplateService.getTemplateWithQuestions(templateId);
         return ResponseEntity.ok(template);
@@ -300,12 +307,14 @@ public class EvaluationAdminController {
      * List templates with filters
      */
     @GetMapping("/v2")
-    @PreAuthorize("hasAnyRole('RH', 'ADMIN', 'RO')")
     public ResponseEntity<List<EvaluationTemplate>> listTemplatesV2(
             @RequestParam(required = false) String type,
-            @RequestParam(required = false) String statut) {
-        
-        List<EvaluationTemplate> templates = enhancedTemplateService.listerTemplates(type, statut);
+            @RequestParam(required = false) String statut,
+            @RequestParam(name = "famille_metier_code", required = false) String familleMetierCode,
+            @RequestParam(name = "niveau_seniorite", required = false) String niveauSeniorite) {
+
+        List<EvaluationTemplate> templates = enhancedTemplateService.listerTemplates(
+                type, statut, familleMetierCode, niveauSeniorite);
         return ResponseEntity.ok(templates);
     }
 
@@ -313,7 +322,7 @@ public class EvaluationAdminController {
      * Publish template
      */
     @PostMapping("/v2/{templateId}/publish")
-    @PreAuthorize("hasAnyRole('RH', 'ADMIN')")
+    @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
     public ResponseEntity<EvaluationTemplate> publishTemplate(
             @PathVariable UUID templateId,
             @RequestParam UUID userId) {
@@ -326,7 +335,7 @@ public class EvaluationAdminController {
      * Archive template
      */
     @PostMapping("/v2/{templateId}/archive")
-    @PreAuthorize("hasAnyRole('RH', 'ADMIN')")
+    @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
     public ResponseEntity<Void> archiveTemplate(@PathVariable UUID templateId) {
         enhancedTemplateService.archiverTemplate(templateId);
         return ResponseEntity.noContent().build();
@@ -336,7 +345,7 @@ public class EvaluationAdminController {
      * Add question to template (enhanced)
      */
     @PostMapping("/v2/{templateId}/questions")
-    @PreAuthorize("hasAnyRole('RH', 'ADMIN')")
+    @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
     public ResponseEntity<EvaluationQuestion> addQuestionV2(
             @PathVariable UUID templateId,
             @Valid @RequestBody CreateQuestionRequest request) {
@@ -349,7 +358,7 @@ public class EvaluationAdminController {
      * Reorder questions
      */
     @PostMapping("/v2/{templateId}/questions/reorder")
-    @PreAuthorize("hasAnyRole('RH', 'ADMIN')")
+    @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
     public ResponseEntity<Void> reorderQuestions(
             @PathVariable UUID templateId,
             @RequestBody List<UUID> questionIdsInOrder) {
@@ -361,13 +370,32 @@ public class EvaluationAdminController {
     // ========== TECHNICAL TEMPLATE MANAGEMENT ==========
 
     @GetMapping("/technical-templates")
-    public ResponseEntity<List<Map<String, Object>>> listTechnicalTemplates() {
-        // TODO: Implement technical template list method in service
-        // For now, return empty list
-        return ResponseEntity.ok(new ArrayList<>());
+    public ResponseEntity<List<Map<String, Object>>> listTechnicalTemplates(
+            @RequestParam(required = false) String niveauSeniorite) {
+        List<EvaluationTemplate> templates = enhancedTemplateService.listerTemplates("TECHNICAL", null);
+        List<Map<String, Object>> response = new ArrayList<>();
+        for (EvaluationTemplate template : templates) {
+            if (niveauSeniorite != null && !niveauSeniorite.isBlank()
+                    && (template.getNiveauSeniorite() == null
+                    || !template.getNiveauSeniorite().equalsIgnoreCase(niveauSeniorite.trim()))) {
+                continue;
+            }
+            Map<String, Object> map = new HashMap<>();
+            map.put("identifiant", template.getId().toString());
+            map.put("nom", template.getNom());
+            map.put("description", template.getDescription());
+            map.put("niveauSeniorite", template.getNiveauSeniorite());
+            map.put("role", template.getRole());
+            map.put("domaine", template.getDomaine());
+            map.put("statut", template.getStatut() != null ? template.getStatut().name() : null);
+            map.put("nombreQuestions", template.getQuestions() != null ? template.getQuestions().size() : 0);
+            response.add(map);
+        }
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/technical-templates")
+    @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
     public ResponseEntity<Map<String, Object>> createTechnicalTemplate(
             @Valid @RequestBody Map<String, Object> request) {
         
@@ -396,8 +424,19 @@ public class EvaluationAdminController {
     // ========== EVALUATION MONITORING ==========
 
     @GetMapping
-    public ResponseEntity<List<Map<String, Object>>> listAllEvaluations() {
-        List<Evaluation> evaluations = evaluationRepository.findAll();
+    public ResponseEntity<List<Map<String, Object>>> listAllEvaluations(
+            @RequestParam(required = false) UUID campagneId,
+            @RequestParam(required = false) Boolean profilIncomplet) {
+        List<Evaluation> evaluations;
+        if (campagneId != null && Boolean.TRUE.equals(profilIncomplet)) {
+            evaluations = evaluationRepository.findByCampaignIdAndProfilMetierIncompletTrue(campagneId);
+        } else if (campagneId != null) {
+            evaluations = evaluationRepository.findByCampaignId(campagneId);
+        } else if (Boolean.TRUE.equals(profilIncomplet)) {
+            evaluations = evaluationRepository.findByProfilMetierIncompletTrue();
+        } else {
+            evaluations = evaluationRepository.findAll();
+        }
         List<Map<String, Object>> response = new ArrayList<>();
         
         for (Evaluation evaluation : evaluations) {
@@ -409,6 +448,9 @@ public class EvaluationAdminController {
             evalMap.put("statut", evaluation.getStatut().name());
             evalMap.put("etapeActuelle", evaluation.getEtapeActuelle().name());
             evalMap.put("scoreSur20", evaluation.getScoreSur20());
+            evalMap.put("familleMetierCode", evaluation.getFamilleMetierCode());
+            evalMap.put("niveauSeniorite", evaluation.getNiveauSeniorite());
+            evalMap.put("profilMetierIncomplet", evaluation.isProfilMetierIncomplet());
             evalMap.put("creeLe", evaluation.getCreeLe());
             response.add(evalMap);
         }

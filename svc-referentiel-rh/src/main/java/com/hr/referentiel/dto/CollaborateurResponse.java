@@ -59,6 +59,15 @@ public class CollaborateurResponse {
 	@JsonProperty("profil_acces")
 	private String profilAcces;
 
+	@JsonProperty("famille_metier_code")
+	private String familleMetierCode;
+
+	@JsonProperty("famille_metier_libelle")
+	private String familleMetierLibelle;
+
+	@JsonProperty("niveau_seniorite")
+	private String niveauSeniorite;
+
 	@JsonProperty("cree_le")
 	private Instant creeLe;
 
@@ -218,5 +227,29 @@ public class CollaborateurResponse {
 
 	public void setProfilAcces(String profilAcces) {
 		this.profilAcces = profilAcces;
+	}
+
+	public String getFamilleMetierCode() {
+		return familleMetierCode;
+	}
+
+	public void setFamilleMetierCode(String familleMetierCode) {
+		this.familleMetierCode = familleMetierCode;
+	}
+
+	public String getFamilleMetierLibelle() {
+		return familleMetierLibelle;
+	}
+
+	public void setFamilleMetierLibelle(String familleMetierLibelle) {
+		this.familleMetierLibelle = familleMetierLibelle;
+	}
+
+	public String getNiveauSeniorite() {
+		return niveauSeniorite;
+	}
+
+	public void setNiveauSeniorite(String niveauSeniorite) {
+		this.niveauSeniorite = niveauSeniorite;
 	}
 }

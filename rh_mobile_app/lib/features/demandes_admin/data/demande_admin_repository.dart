@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'dart:io';
 
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
@@ -61,46 +60,32 @@ class DemandeAdminRepository {
     required String typeConge,
     String? certificatPath,
   }) async {
+    // Story 7 : le serveur exige `contenu.certificat` ou `pieces_jointes` pour
+    // MALADIE/MATERNITE. Pas d’endpoint multipart encore → JSON + marqueur fichier.
+    final contenu = <String, dynamic>{
+      'date_debut': dateDebut,
+      'date_fin': dateFin,
+      'type_conge': typeConge,
+    };
     if (certificatPath != null && certificatPath.isNotEmpty) {
-      final formData = FormData.fromMap({
-        'type_demande': 'CONGE',
-        'contenu': {
-          'date_debut': dateDebut,
-          'date_fin': dateFin,
-          'type_conge': typeConge,
-        },
-        'certificat': await MultipartFile.fromFile(
-          certificatPath,
-          filename: certificatPath.split('/').last,
-        ),
-      });
-      await _dio.post<Map<String, dynamic>>(
-        ApiConstants.demandesAdmin,
-        data: formData,
-        options: Options(
-          headers: {'Content-Type': 'multipart/form-data'},
-        ),
-      );
-    } else {
-      await _dio.post<Map<String, dynamic>>(
-        ApiConstants.demandesAdmin,
-        data: {
-          'type_demande': 'CONGE',
-          'contenu': {
-            'date_debut': dateDebut,
-            'date_fin': dateFin,
-            'type_conge': typeConge,
-          },
-        },
-      );
+      final name = certificatPath.replaceAll('\\', '/').split('/').last;
+      contenu['certificat'] = name.isNotEmpty ? name : 'certificat_fourni';
+      contenu['pieces_jointes'] = [contenu['certificat']];
     }
+    await _dio.post<Map<String, dynamic>>(
+      ApiConstants.demandesAdmin,
+      data: {
+        'type_demande': 'CONGE',
+        'contenu': contenu,
+      },
+    );
   }
   /// CDC §M01 : annulation par le demandeur (statut EN_VALIDATION_SUPERIEUR ou EN_VALIDATION_RRH)
   Future<void> annulerDemande(String id) async {
     await _dio.post<Map<String, dynamic>>('${ApiConstants.demandesAdmin}/$id/annuler');
   }
 
-  /// CDC §M01 : liste des demandes en attente de validation pour le RO connecté
+  /// File M01 : demandes dont le connecté est le valideur attendu (manager nœud).
   Future<List<DemandeAdminItem>> demandesEnAttenteRo() async {
     final res = await _dio.get<List<dynamic>>('${ApiConstants.demandesAdmin}/en-attente-ro');
     final list = res.data ?? [];
@@ -152,7 +137,7 @@ class DemandeAdminRepository {
     return DemandeAdminSuivi.fromJson(res.data!);
   }
 
-  /// RO valide une demande en attente (EN_VALIDATION_SUPERIEUR → EN_VALIDATION_RRH)
+  /// Validation 1er niveau : manager ACTIF du nœud (403 si autre nœud).
   Future<DemandeAdminItem> validerSuperieur(String id) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '${ApiConstants.demandesAdmin}/$id/valider-superieur',
@@ -160,7 +145,7 @@ class DemandeAdminRepository {
     return DemandeAdminItem.fromJson(res.data!);
   }
 
-  /// RO refuse une demande avec motif obligatoire
+  /// Refus 1er niveau avec motif obligatoire (403 si non manager du nœud).
   Future<DemandeAdminItem> refuserSuperieur(String id, String motifRefus) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '${ApiConstants.demandesAdmin}/$id/refuser-superieur',

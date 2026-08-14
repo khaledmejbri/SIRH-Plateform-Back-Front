@@ -5,7 +5,9 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
+import '../data/demande_admin_errors.dart';
 import '../data/demande_admin_repository.dart';
+import '../data/type_conge.dart';
 import 'demandes_admin_list_screen.dart';
 
 class DemandeCongeCreateScreen extends ConsumerStatefulWidget {
@@ -19,9 +21,11 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
   DateTime? _debut;
   DateTime? _fin;
   String _typeConge = 'ANNUEL';
-  File? _certificatMedical;
+  File? _pieceJointe;
   var _loading = false;
   final ImagePicker _picker = ImagePicker();
+
+  bool get _pjRequise => typeCongeExigePieceJointe(_typeConge);
 
   @override
   void dispose() {
@@ -48,11 +52,21 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
     if (d != null) setState(() => _fin = d);
   }
 
-  Future<void> _pickCertificat() async {
+  void _onTypeChanged(String? value) {
+    if (value == null) return;
+    setState(() {
+      _typeConge = value;
+      if (!typeCongeExigePieceJointe(value)) {
+        _pieceJointe = null;
+      }
+    });
+  }
+
+  Future<void> _pickPieceJointe() async {
     final source = await showDialog<ImageSource>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Sélectionner un certificat'),
+        title: const Text('Joindre un justificatif'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -74,23 +88,34 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
     if (source != null) {
       final XFile? image = await _picker.pickImage(source: source);
       if (image != null) {
-        setState(() => _certificatMedical = File(image.path));
+        setState(() => _pieceJointe = File(image.path));
       }
     }
   }
 
   Future<void> _submit() async {
     if (_debut == null || _fin == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Choisissez les dates')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez choisir la date de début et la date de fin.')),
+      );
       return;
     }
     if (_fin!.isBefore(_debut!)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Date fin invalide')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('La date de fin ne peut pas être antérieure à la date de début.')),
+      );
       return;
     }
-    if (_typeConge == 'MALADIE' && _certificatMedical == null) {
+    if (_pjRequise && _pieceJointe == null) {
+      final motif = _typeConge == 'MATERNITE'
+          ? 'un congé maternité'
+          : 'un congé maladie';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Certificat médical requis pour un congé maladie')),
+        SnackBar(
+          content: Text(
+            'Un justificatif (certificat) est obligatoire pour $motif. Veuillez joindre le document avant d’envoyer.',
+          ),
+        ),
       );
       return;
     }
@@ -101,15 +126,28 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
             dateDebut: fmt.format(_debut!),
             dateFin: fmt.format(_fin!),
             typeConge: _typeConge,
-            certificatPath: _certificatMedical?.path,
+            certificatPath: _pieceJointe?.path,
           );
       ref.invalidate(demandesAdminListProvider);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Demande envoyée')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Demande de congé envoyée.')),
+        );
         context.pop();
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              messageErreurDemandeAdmin(
+                e,
+                fallback: 'Impossible d’envoyer la demande de congé.',
+              ),
+            ),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -117,7 +155,6 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
 
   @override
   Widget build(BuildContext context) {
-    final fmt = DateFormat.yMMMd('fr_FR');
     const primaryBlue = Color(0xFF2563EB);
 
     return Scaffold(
@@ -132,33 +169,28 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
         padding: const EdgeInsets.all(24),
         children: [
           const Text(
-            "Détails du congé",
+            'Détails du congé',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
           ),
           const SizedBox(height: 20),
-          
           _DateTile(
-            label: "Date de début",
+            label: 'Date de début',
             date: _debut,
             onTap: _pickDebut,
             icon: Icons.calendar_today_outlined,
             color: primaryBlue,
           ),
-          
           const SizedBox(height: 16),
-          
           _DateTile(
-            label: "Date de fin",
+            label: 'Date de fin',
             date: _fin,
             onTap: _pickFin,
             icon: Icons.calendar_month_outlined,
             color: primaryBlue,
           ),
-          
           const SizedBox(height: 24),
-          
           const Text(
-            "Type de congé",
+            'Type de congé',
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
           ),
           const SizedBox(height: 8),
@@ -180,27 +212,29 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
                 ),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               ),
-              items: const [
-                DropdownMenuItem(value: 'ANNUEL', child: Text('Congé Annuel')),
-                DropdownMenuItem(value: 'MALADIE', child: Text('Congé Maladie')),
+              items: [
+                for (final t in kTypesConge)
+                  DropdownMenuItem(value: t.code, child: Text(t.label)),
               ],
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() => _typeConge = value);
-                }
-              },
+              onChanged: _onTypeChanged,
             ),
           ),
-          
-          if (_typeConge == 'MALADIE') ...[
+          if (_pjRequise) ...[
             const SizedBox(height: 24),
-            const Text(
-              "Certificat médical",
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+            Text(
+              _typeConge == 'MATERNITE' ? 'Justificatif (obligatoire)' : 'Certificat médical (obligatoire)',
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _typeConge == 'MATERNITE'
+                  ? 'Joignez le certificat ou justificatif de maternité.'
+                  : 'Joignez le certificat médical pour ce congé maladie.',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
             const SizedBox(height: 8),
             InkWell(
-              onTap: _pickCertificat,
+              onTap: _pickPieceJointe,
               borderRadius: BorderRadius.circular(16),
               child: Container(
                 padding: const EdgeInsets.all(16),
@@ -208,7 +242,7 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: _certificatMedical != null ? Colors.green : Colors.grey.shade200,
+                    color: _pieceJointe != null ? Colors.green : Colors.grey.shade200,
                     width: 2,
                   ),
                 ),
@@ -217,12 +251,12 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: (_certificatMedical != null ? Colors.green : primaryBlue).withOpacity(0.1),
+                        color: (_pieceJointe != null ? Colors.green : primaryBlue).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
-                        _certificatMedical != null ? Icons.check_circle : Icons.upload_file,
-                        color: _certificatMedical != null ? Colors.green : primaryBlue,
+                        _pieceJointe != null ? Icons.check_circle : Icons.upload_file,
+                        color: _pieceJointe != null ? Colors.green : primaryBlue,
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -231,20 +265,20 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _certificatMedical != null ? 'Certificat ajouté' : 'Ajouter un certificat',
+                            _pieceJointe != null ? 'Document joint' : 'Ajouter un justificatif',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
-                              color: _certificatMedical != null ? Colors.green : const Color(0xFF1E293B),
+                              color: _pieceJointe != null ? Colors.green : const Color(0xFF1E293B),
                             ),
                           ),
-                          if (_certificatMedical != null)
+                          if (_pieceJointe != null)
                             Text(
-                              _certificatMedical!.path.split('/').last,
+                              _pieceJointe!.path.split(RegExp(r'[/\\]')).last,
                               style: const TextStyle(fontSize: 12, color: Colors.grey),
                             )
                           else
                             const Text(
-                              'PDF ou image',
+                              'Photo ou image du certificat',
                               style: TextStyle(fontSize: 12, color: Colors.grey),
                             ),
                         ],
@@ -256,9 +290,7 @@ class _DemandeCongeCreateScreenState extends ConsumerState<DemandeCongeCreateScr
               ),
             ),
           ],
-
           const SizedBox(height: 40),
-          
           SizedBox(
             height: 56,
             child: FilledButton(

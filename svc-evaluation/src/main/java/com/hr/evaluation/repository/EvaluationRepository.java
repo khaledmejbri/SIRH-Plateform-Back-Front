@@ -22,6 +22,10 @@ public interface EvaluationRepository extends JpaRepository<Evaluation, UUID> {
             UUID collaborateurIdentifiant);
 
     List<Evaluation> findByCampaignIdAndStatut(UUID campaignId, StatutEvaluationRh statut);
+
+    List<Evaluation> findByCampaignIdAndProfilMetierIncompletTrue(UUID campaignId);
+
+    List<Evaluation> findByProfilMetierIncompletTrue();
     
     @Query("SELECT e FROM Evaluation e LEFT JOIN FETCH e.campaign WHERE e.collaborateurIdentifiant = :collaborateurIdentifiant ORDER BY e.creeLe DESC")
     List<Evaluation> findByCollaborateurIdentifiantOrderByCreeLeDescWithCampaign(UUID collaborateurIdentifiant);
@@ -29,6 +33,6 @@ public interface EvaluationRepository extends JpaRepository<Evaluation, UUID> {
     @Query("SELECT e FROM Evaluation e LEFT JOIN FETCH e.campaign WHERE e.superieurIdentifiant = :superieurIdentifiant ORDER BY e.creeLe DESC")
     List<Evaluation> findBySuperieurIdentifiantOrderByCreeLeDescWithCampaign(UUID superieurIdentifiant);
     
-    @Query("SELECT e FROM Evaluation e LEFT JOIN FETCH e.campaign c LEFT JOIN FETCH c.templateGeneral LEFT JOIN FETCH c.templateTechnique LEFT JOIN FETCH c.templateCompetence WHERE e.id = :id")
+    @Query("SELECT e FROM Evaluation e LEFT JOIN FETCH e.campaign c LEFT JOIN FETCH c.templateGeneral LEFT JOIN FETCH c.templateTechnique LEFT JOIN FETCH c.templateCompetence LEFT JOIN FETCH e.templateCompetenceAssigne WHERE e.id = :id")
     Optional<Evaluation> findByIdWithCampaign(UUID id);
 }

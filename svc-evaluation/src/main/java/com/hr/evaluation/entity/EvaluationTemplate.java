@@ -39,6 +39,11 @@ public class EvaluationTemplate {
     @Column(name = "niveau_seniorite", length = 50)
     private String niveauSeniorite;
 
+    /** Clé matching TECHNICAL (E3) — remplace l'écriture Must de {@link #role}. */
+    @Column(name = "famille_metier_code", length = 64)
+    private String familleMetierCode;
+
+    /** Legacy alias lecture / migration → préférer {@link #familleMetierCode}. */
     @Column(name = "role", length = 100)
     private String role;
 
@@ -100,7 +105,20 @@ public class EvaluationTemplate {
     
     public String getNiveauSeniorite() { return niveauSeniorite; }
     public void setNiveauSeniorite(String niveauSeniorite) { this.niveauSeniorite = niveauSeniorite; }
-    
+
+    public String getFamilleMetierCode() { return familleMetierCode; }
+    public void setFamilleMetierCode(String familleMetierCode) { this.familleMetierCode = familleMetierCode; }
+
+    /**
+     * Code famille effectif pour matching : colonne dédiée, sinon legacy {@code role}.
+     */
+    public String resolveFamilleMetierCode() {
+        if (familleMetierCode != null && !familleMetierCode.isBlank()) {
+            return familleMetierCode;
+        }
+        return role;
+    }
+
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
     

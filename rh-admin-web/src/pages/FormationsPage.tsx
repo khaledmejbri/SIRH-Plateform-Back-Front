@@ -5,10 +5,12 @@ import {
   postFormationRefuser,
   type DemandeFormation,
 } from '../api/rhClient';
+import { useLectureSeule } from '../auth/useLectureSeule';
 
 type StatutFilter = '' | 'EN_VALIDATION_RRH' | 'INTEGREE_PLAN' | 'REFUSEE' | 'ANNULEE';
 
 export default function FormationsPage() {
+  const lectureSeule = useLectureSeule();
   const [rows, setRows] = useState<DemandeFormation[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -123,7 +125,7 @@ export default function FormationsPage() {
                     <td style={{ ...tdStyle, textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                         <button className="btn btn--ghost" onClick={() => viewDetail(d)}>Détails</button>
-                        {d.statut === 'EN_VALIDATION_RRH' ? (
+                        {!lectureSeule && d.statut === 'EN_VALIDATION_RRH' ? (
                           <>
                             <button className="btn btn--ghost" onClick={() => void refuser(d)}>Refuser</button>
                             <button className="btn btn--primary" onClick={() => void integrer(d)}>Intégrer</button>

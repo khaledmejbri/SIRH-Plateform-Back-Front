@@ -51,8 +51,8 @@ public class RhNotificationPublisher {
     // ─── Demande Administrative ─────────────────────────────────────────────
 
     /**
-     * Étape 1 : demande soumise → notifie le RO de l'unité du demandeur.
-     * Si pas de RO → notifie directement les RH.
+     * Étape 1 : demande soumise → notifie le manager ACTIF du nœud d'unité.
+     * Si aucun manager actif → notifie directement les RH.
      */
     public void notifierDemandeRecue(Collaborateur demandeur, String typeDemande, String identifiantDemande) {
         UniteOrganisation unite = demandeur.getUnite();
@@ -65,18 +65,17 @@ public class RhNotificationPublisher {
             return;
         }
 
-        Optional<Collaborateur> ro = collaborateurRepository.findRoByUniteId(unite.getId());
-        if (ro.isPresent()) {
-            envoyer(ro.get().getId().toString(),
+        Optional<Collaborateur> manager = managerNoeudActif(unite);
+        if (manager.isPresent()) {
+            envoyer(manager.get().getId().toString(),
                     "Demande à valider — " + libelleDemande(typeDemande),
                     nomComplet(demandeur) + " a soumis une demande " + libelleDemande(typeDemande)
                             + ". Votre validation est requise.");
         } else {
-            // Pas de RO dans cette unité → notifier RH directement
             notifierTousLesRh(
                     "Demande à valider — " + libelleDemande(typeDemande),
                     nomComplet(demandeur) + " a soumis une demande " + libelleDemande(typeDemande)
-                            + " (aucun RO dans l'unité " + unite.getLibelle() + ").");
+                            + " (aucun manager actif sur le nœud " + unite.getLibelle() + ").");
         }
     }
 
@@ -123,13 +122,13 @@ public class RhNotificationPublisher {
     }
 
     /**
-     * Annulation par le demandeur → notifie le RO pour information.
+     * Annulation par le demandeur → notifie le manager du nœud pour information.
      */
     public void notifierAnnulationDemandeur(Collaborateur demandeur, String typeDemande) {
         UniteOrganisation unite = demandeur.getUnite();
         if (unite == null) return;
-        collaborateurRepository.findRoByUniteId(unite.getId()).ifPresent(ro ->
-                envoyer(ro.getId().toString(),
+        managerNoeudActif(unite).ifPresent(manager ->
+                envoyer(manager.getId().toString(),
                         "Demande annulée par le collaborateur",
                         nomComplet(demandeur) + " a annulé sa demande " + libelleDemande(typeDemande) + ".")
         );
@@ -306,6 +305,18 @@ public class RhNotificationPublisher {
         // Pour les profils non-RH (SERVICES_TECHNIQUES, DIRECTION_ENV_SOCIAL),
         // envoyer au groupe — svc-notification résout les membres du groupe
         envoyer("GROUP:" + profil, sujet, corps);
+    }
+
+    /** Manager ACTIF du nœud d'unité (source de vérité M01). */
+    private static Optional<Collaborateur> managerNoeudActif(UniteOrganisation unite) {
+        if (unite == null || unite.getManager() == null) {
+            return Optional.empty();
+        }
+        Collaborateur manager = unite.getManager();
+        if (!"ACTIF".equalsIgnoreCase(manager.getStatut())) {
+            return Optional.empty();
+        }
+        return Optional.of(manager);
     }
 
     private void envoyer(String recipientId, String sujet, String corps) {

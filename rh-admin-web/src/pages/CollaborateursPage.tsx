@@ -1,15 +1,39 @@
 import { FormEvent, useEffect, useState } from 'react';
 import {
   getCollaborateursPage,
+  getFamillesMetier,
   getUnites,
+  isProfilAcces,
+  libelleProfilAcces,
+  nomCollaborateur,
   postCollaborateur,
   putCollaborateur,
+  PROFILS_ACCES,
+  LIBELLES_PROFIL_ACCES,
   type CollaborateurRow,
+  type FamilleMetierRow,
   type Unite,
 } from '../api/rhClient';
+import {
+  FAMILLES_METIER_SEED,
+  NIVEAUX_SENIORITE,
+  libelleFamilleMetier,
+  libelleNiveauSeniorite,
+  normalizeNiveauSeniorite,
+} from '../api/evaluationCatalog';
+import { useLectureSeule } from '../auth/useLectureSeule';
+
+const PROFIL_DEFAUT = 'COLLABORATEUR' as const;
+
+function profilDepuisLigne(row: CollaborateurRow | null): string {
+  if (row?.profil_acces) return row.profil_acces.toUpperCase();
+  return PROFIL_DEFAUT;
+}
 
 export default function CollaborateursPage() {
-  const [tab, setTab] = useState<'liste' | 'creer'>('liste');
+  const lectureSeule = useLectureSeule();
+  const [tab, setTab] = useState<'liste' | 'form'>('liste');
+  const [editing, setEditing] = useState<CollaborateurRow | null>(null);
   const [unites, setUnites] = useState<Unite[]>([]);
   const [rows, setRows] = useState<CollaborateurRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -28,11 +52,27 @@ export default function CollaborateursPage() {
   const [dateRecrutement, setDateRecrutement] = useState('');
   const [statut, setStatut] = useState('ACTIF');
   const [uniteId, setUniteId] = useState('');
+  const [profilAcces, setProfilAcces] = useState<string>(PROFIL_DEFAUT);
+  const [familleMetierCode, setFamilleMetierCode] = useState('');
+  const [niveauSeniorite, setNiveauSeniorite] = useState('');
+  const [familles, setFamilles] = useState<FamilleMetierRow[]>(FAMILLES_METIER_SEED);
+  const [catalogueStub, setCatalogueStub] = useState(false);
   const [motDePasseInitial, setMotDePasseInitial] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     void getUnites().then(setUnites).catch(() => {});
+    void getFamillesMetier(true)
+      .then((rows) => {
+        if (Array.isArray(rows) && rows.length > 0) {
+          setFamilles(rows);
+          setCatalogueStub(false);
+        }
+      })
+      .catch(() => {
+        setFamilles(FAMILLES_METIER_SEED);
+        setCatalogueStub(true);
+      });
   }, []);
 
   async function loadList() {
@@ -57,36 +97,93 @@ export default function CollaborateursPage() {
     if (unites.length && !uniteId) setUniteId(unites[0].identifiant);
   }, [unites, uniteId]);
 
-  async function onCreate(e: FormEvent) {
+  function resetForm() {
+    setMatricule('');
+    setPrenom('');
+    setNom('');
+    setCourriel('');
+    setPosteLibelle('');
+    setFonction('');
+    setDepartementLibelle('');
+    setDateRecrutement('');
+    setStatut('ACTIF');
+    setProfilAcces(PROFIL_DEFAUT);
+    setFamilleMetierCode('');
+    setNiveauSeniorite('');
+    setMotDePasseInitial('');
+    setEditing(null);
+    if (unites[0]) setUniteId(unites[0].identifiant);
+  }
+
+  function openCreer() {
+    resetForm();
+    setTab('form');
+  }
+
+  function openEditer(row: CollaborateurRow) {
+    setEditing(row);
+    setMatricule(row.matricule);
+    setPrenom(row.prenom);
+    setNom(nomCollaborateur(row));
+    setCourriel(row.courriel_professionnel ?? '');
+    setPosteLibelle(row.poste_libelle ?? '');
+    setFonction(row.fonction ?? '');
+    setDepartementLibelle(row.departement_libelle ?? '');
+    setDateRecrutement(row.date_recrutement ? row.date_recrutement.slice(0, 10) : '');
+    setStatut(row.statut);
+    setUniteId(row.unite?.identifiant ?? unites[0]?.identifiant ?? '');
+    setProfilAcces(profilDepuisLigne(row));
+    setFamilleMetierCode(row.famille_metier_code ?? '');
+    setNiveauSeniorite(normalizeNiveauSeniorite(row.niveau_seniorite) ?? '');
+    setMotDePasseInitial('');
+    setTab('form');
+  }
+
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setMsg(null);
     setErr(null);
     setSaving(true);
+    const nom = name.trim();
     try {
-      await postCollaborateur({
-        matricule: matricule.trim(),
-        prenom: prenom.trim(),
-        name: name.trim(),
-        courriel_professionnel: courriel.trim(),
-        poste_libelle: posteLibelle.trim() || undefined,
-        fonction: fonction.trim() || undefined,
-        departement_libelle: departementLibelle.trim() || undefined,
-        date_recrutement: dateRecrutement || undefined,
-        statut: statut.trim(),
-        unite_identifiant: uniteId,
-        profil_acces: 'COLLABORATEUR',
-        mot_de_passe_initial: motDePasseInitial,
-      });
-      setMsg('Collaborateur enregistre avec succes. La creation du compte et le courriel se font en arriere-plan.');
-      setMatricule('');
-      setPrenom('');
-      setNom('');
-      setCourriel('');
-      setPosteLibelle('');
-      setFonction('');
-      setDepartementLibelle('');
-      setDateRecrutement('');
-      setMotDePasseInitial('');
+      if (editing) {
+        await putCollaborateur(editing.identifiant, {
+          prenom: prenom.trim(),
+          nom,
+          name: nom,
+          courriel_professionnel: courriel.trim(),
+          poste_libelle: posteLibelle.trim() || undefined,
+          fonction: fonction.trim() || undefined,
+          departement_libelle: departementLibelle.trim() || undefined,
+          date_recrutement: dateRecrutement || undefined,
+          statut: statut.trim(),
+          unite_identifiant: uniteId,
+          profil_acces: profilAcces,
+          famille_metier_code: familleMetierCode || null,
+          niveau_seniorite: niveauSeniorite || null,
+        });
+        setMsg('Collaborateur mis à jour.');
+      } else {
+        await postCollaborateur({
+          matricule: matricule.trim(),
+          prenom: prenom.trim(),
+          nom,
+          name: nom,
+          courriel_professionnel: courriel.trim(),
+          poste_libelle: posteLibelle.trim() || undefined,
+          fonction: fonction.trim() || undefined,
+          departement_libelle: departementLibelle.trim() || undefined,
+          date_recrutement: dateRecrutement || undefined,
+          statut: statut.trim(),
+          unite_identifiant: uniteId,
+          profil_acces: profilAcces,
+          famille_metier_code: familleMetierCode || undefined,
+          niveau_seniorite: niveauSeniorite || undefined,
+          mot_de_passe_initial: motDePasseInitial,
+        });
+        setMsg('Collaborateur enregistre avec succes. La creation du compte et le courriel se font en arriere-plan.');
+      }
+      resetForm();
       setTab('liste');
       setPage(0);
       await loadList();
@@ -101,7 +198,7 @@ export default function CollaborateursPage() {
 
   async function archiveCollaborateur(row: CollaborateurRow) {
     if (row.statut === 'ARCHIVE') return;
-    if (!window.confirm(`Archiver ${row.prenom} ${row.name} ?`)) return;
+    if (!window.confirm(`Archiver ${row.prenom} ${nomCollaborateur(row)} ?`)) return;
     setErr(null);
     setMsg(null);
     try {
@@ -121,12 +218,21 @@ export default function CollaborateursPage() {
           <p className="page__lead">Referentiel : le compte mobile est cree en arriere-plan ; le collaborateur recoit un courriel si SMTP est configure.</p>
         </div>
         <div className="tabs">
-          <button type="button" className={'tab' + (tab === 'liste' ? ' tab--on' : '')} onClick={() => setTab('liste')}>
+          <button
+            type="button"
+            className={'tab' + (tab === 'liste' ? ' tab--on' : '')}
+            onClick={() => {
+              setTab('liste');
+              setEditing(null);
+            }}
+          >
             Liste
           </button>
-          <button type="button" className={'tab' + (tab === 'creer' ? ' tab--on' : '')} onClick={() => setTab('creer')}>
-            Creer
-          </button>
+          {!lectureSeule ? (
+            <button type="button" className={'tab' + (tab === 'form' && !editing ? ' tab--on' : '')} onClick={openCreer}>
+              Creer
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -146,6 +252,8 @@ export default function CollaborateursPage() {
                       <th>Matricule</th>
                       <th>Nom</th>
                       <th>Email</th>
+                      <th>Profil d&apos;accès</th>
+                      <th>Famille / niveau</th>
                       <th>Statut</th>
                       <th>Compte</th>
                       <th>Actions</th>
@@ -156,30 +264,58 @@ export default function CollaborateursPage() {
                       <tr key={r.identifiant}>
                         <td className="mono">{r.matricule}</td>
                         <td>
-                          {r.prenom} {r.name}
+                          {r.prenom} {nomCollaborateur(r)}
                         </td>
                         <td className="muted">{r.courriel_professionnel ?? '-'}</td>
+                        <td>
+                          {libelleProfilAcces(r.profil_acces)}
+                          {r.profil_acces ? (
+                            <span className="badge badge--default" style={{ marginLeft: 8 }}>
+                              {r.profil_acces}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td>
+                          {r.famille_metier_code || r.niveau_seniorite ? (
+                            <span className="small">
+                              {r.famille_metier_libelle
+                                ?? libelleFamilleMetier(r.famille_metier_code, familles)}
+                              {r.niveau_seniorite
+                                ? ` · ${libelleNiveauSeniorite(r.niveau_seniorite)}`
+                                : ''}
+                            </span>
+                          ) : (
+                            <span className="muted small">—</span>
+                          )}
+                        </td>
                         <td>{r.statut}</td>
                         <td>{r.compte_utilisateur_id ? <span className="pill pill--ok">Lie</span> : '-'}</td>
                         <td>
-                          <div className="page__head-actions">
-                            <button
-                              type="button"
-                              className="btn btn--ghost btn--sm"
-                              onClick={() => archiveCollaborateur(r)}
-                              disabled={r.statut === 'ARCHIVE'}
-                            >
-                              Archiver
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn--secondary btn--sm"
-                              title="Endpoint changement mot de passe a connecter cote backend."
-                              disabled
-                            >
-                              Changer mot de passe
-                            </button>
-                          </div>
+                          {lectureSeule ? (
+                            <span className="muted small">Lecture seule</span>
+                          ) : (
+                            <div className="page__head-actions">
+                              <button type="button" className="btn btn--secondary btn--sm" onClick={() => openEditer(r)}>
+                                Modifier
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                onClick={() => archiveCollaborateur(r)}
+                                disabled={r.statut === 'ARCHIVE'}
+                              >
+                                Archiver
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn--secondary btn--sm"
+                                title="Endpoint changement mot de passe a connecter cote backend."
+                                disabled
+                              >
+                                Changer mot de passe
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -206,11 +342,20 @@ export default function CollaborateursPage() {
           )}
         </div>
       ) : (
-        <form className="panel panel--form" onSubmit={onCreate}>
+        <form className="panel panel--form" onSubmit={onSubmit}>
+          <p className="page__lead" style={{ marginTop: 0 }}>
+            {editing ? `Modifier ${editing.matricule}` : 'Nouveau collaborateur'}
+          </p>
           <div className="form-grid">
             <div>
               <label className="field-label">Matricule</label>
-              <input className="field-input" value={matricule} onChange={(e) => setMatricule(e.target.value)} required />
+              <input
+                className="field-input"
+                value={matricule}
+                onChange={(e) => setMatricule(e.target.value)}
+                required={!editing}
+                disabled={!!editing}
+              />
             </div>
             <div>
               <label className="field-label">Prenom</label>
@@ -231,6 +376,64 @@ export default function CollaborateursPage() {
                 <option value="SUSPENDU">SUSPENDU</option>
                 <option value="ARCHIVE">ARCHIVE</option>
               </select>
+            </div>
+            <div>
+              <label className="field-label">Profil d&apos;accès</label>
+              <select
+                className="field-input"
+                value={profilAcces}
+                onChange={(e) => setProfilAcces(e.target.value)}
+                required
+              >
+                {!isProfilAcces(profilAcces) && profilAcces ? (
+                  <option value={profilAcces}>{profilAcces}</option>
+                ) : null}
+                {PROFILS_ACCES.map((code) => (
+                  <option key={code} value={code}>
+                    {LIBELLES_PROFIL_ACCES[code]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="field-label" htmlFor="collab-famille">Famille métier</label>
+              <select
+                id="collab-famille"
+                className="field-input"
+                value={familleMetierCode}
+                onChange={(e) => setFamilleMetierCode(e.target.value)}
+              >
+                <option value="">— Non renseigné —</option>
+                {familles.map((f) => (
+                  <option key={f.code} value={f.code}>
+                    {f.libelle}
+                  </option>
+                ))}
+              </select>
+              {catalogueStub ? (
+                <p className="muted small" style={{ margin: '0.35rem 0 0' }}>
+                  Catalogue familles temporairement indisponible — liste seed affichée.
+                </p>
+              ) : null}
+            </div>
+            <div>
+              <label className="field-label" htmlFor="collab-niveau">Niveau de séniorité</label>
+              <select
+                id="collab-niveau"
+                className="field-input"
+                value={niveauSeniorite}
+                onChange={(e) => setNiveauSeniorite(e.target.value)}
+              >
+                <option value="">— Non renseigné —</option>
+                {NIVEAUX_SENIORITE.map((n) => (
+                  <option key={n.code} value={n.code}>
+                    {n.libelle}
+                  </option>
+                ))}
+              </select>
+              <p className="muted small" style={{ margin: '0.35rem 0 0' }}>
+                Clé matching évaluations (indépendant du profil d&apos;accès).
+              </p>
             </div>
             <div>
               <label className="field-label">Unite</label>
@@ -262,21 +465,35 @@ export default function CollaborateursPage() {
               />
             </div>
 
-            <div>
-              <label className="field-label">Mot de passe initial</label>
-              <input
-                className="field-input"
-                type="password"
-                minLength={8}
-                value={motDePasseInitial}
-                onChange={(e) => setMotDePasseInitial(e.target.value)}
-                required
-              />
-            </div>
+            {!editing ? (
+              <div>
+                <label className="field-label">Mot de passe initial</label>
+                <input
+                  className="field-input"
+                  type="password"
+                  minLength={8}
+                  value={motDePasseInitial}
+                  onChange={(e) => setMotDePasseInitial(e.target.value)}
+                  required
+                />
+              </div>
+            ) : null}
           </div>
-          <button type="submit" className="btn btn--primary" disabled={saving}>
-            {saving ? '...' : 'Creer'}
-          </button>
+          <div className="page__head-actions">
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => {
+                resetForm();
+                setTab('liste');
+              }}
+            >
+              Annuler
+            </button>
+            <button type="submit" className="btn btn--primary" disabled={saving}>
+              {saving ? '...' : editing ? 'Enregistrer' : 'Creer'}
+            </button>
+          </div>
         </form>
       )}
     </div>

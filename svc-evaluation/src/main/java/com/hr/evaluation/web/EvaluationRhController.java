@@ -7,6 +7,7 @@ import com.hr.evaluation.dto.EvaluationPdfArchiveResponse;
 import com.hr.evaluation.dto.EvaluationRhResponse;
 import com.hr.evaluation.dto.EvaluationSemestrielleCreationRequest;
 import com.hr.evaluation.dto.EvaluationValidationRequest;
+import com.hr.evaluation.security.EvaluationAccessService;
 import com.hr.evaluation.service.EvaluationRhService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -28,27 +29,31 @@ import java.util.UUID;
 public class EvaluationRhController {
 
 	private final EvaluationRhService evaluationRhService;
+	private final EvaluationAccessService evaluationAccess;
 
-	public EvaluationRhController(EvaluationRhService evaluationRhService) {
+	public EvaluationRhController(
+			EvaluationRhService evaluationRhService,
+			EvaluationAccessService evaluationAccess) {
 		this.evaluationRhService = evaluationRhService;
+		this.evaluationAccess = evaluationAccess;
 	}
 
 	@PostMapping("/semestrielles")
-	@PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_RH)
+	@PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<EvaluationRhResponse> creerSemestrielle(
 			@Valid @RequestBody EvaluationSemestrielleCreationRequest requete) {
 		return ResponseEntity.status(HttpStatus.CREATED).body(evaluationRhService.creerSemestrielle(requete));
 	}
 
 	@PostMapping("/annuelles")
-	@PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_RH)
+	@PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<EvaluationRhResponse> creerAnnuelle(
 			@Valid @RequestBody EvaluationAnnuelleCreationRequest requete) {
 		return ResponseEntity.status(HttpStatus.CREATED).body(evaluationRhService.creerAnnuelle(requete));
 	}
 
 	@GetMapping
-	@PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_RH)
+	@PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<List<EvaluationRhResponse>> lister(
 			@RequestParam(name = "type", required = false) TypeEvaluationRh type,
 			@RequestParam(name = "statut", required = false) StatutEvaluationRh statut) {
@@ -56,51 +61,56 @@ public class EvaluationRhController {
 	}
 
 	@GetMapping("/collaborateur/{collaborateurIdentifiant}")
-	@PreAuthorize("isAuthenticated()")
+	@PreAuthorize(EvaluationSecurityExpressions.MOBILE_USER)
 	public ResponseEntity<List<EvaluationRhResponse>> listerCollaborateur(
 			@PathVariable UUID collaborateurIdentifiant) {
+		evaluationAccess.assertCanAccessCollaborateurScope(collaborateurIdentifiant);
 		return ResponseEntity.ok(evaluationRhService.listerCollaborateur(collaborateurIdentifiant));
 	}
 
 	@GetMapping("/superieur/{superieurIdentifiant}")
-	@PreAuthorize("isAuthenticated()")
+	@PreAuthorize(EvaluationSecurityExpressions.MOBILE_USER)
 	public ResponseEntity<List<EvaluationRhResponse>> listerSuperieur(
 			@PathVariable UUID superieurIdentifiant) {
+		evaluationAccess.assertCanAccessSuperieurScope(superieurIdentifiant);
 		return ResponseEntity.ok(evaluationRhService.listerSuperieur(superieurIdentifiant));
 	}
 
 	@GetMapping("/{identifiant}")
-	@PreAuthorize("isAuthenticated()")
+	@PreAuthorize(EvaluationSecurityExpressions.MOBILE_USER)
 	public ResponseEntity<EvaluationRhResponse> obtenir(@PathVariable UUID identifiant) {
+		evaluationAccess.assertCanAccessEvaluationRh(identifiant);
 		return ResponseEntity.ok(evaluationRhService.obtenir(identifiant));
 	}
 
 	@PostMapping("/{identifiant}/validation-collaborateur")
-	@PreAuthorize("hasRole('USER')")
+	@PreAuthorize(EvaluationSecurityExpressions.MOBILE_USER)
 	public ResponseEntity<EvaluationRhResponse> validerCollaborateur(
 			@PathVariable UUID identifiant,
 			@RequestBody(required = false) EvaluationValidationRequest requete) {
-		UUID acteur = requete != null ? requete.acteurIdentifiant() : null;
+		evaluationAccess.assertIsCollaborateurOfRh(identifiant);
+		UUID acteur = evaluationAccess.requireCurrentActorId();
 		return ResponseEntity.ok(evaluationRhService.validerCollaborateur(identifiant, acteur));
 	}
 
 	@PostMapping("/{identifiant}/validation-superieur")
-	@PreAuthorize("isAuthenticated()")
+	@PreAuthorize(EvaluationSecurityExpressions.MOBILE_USER)
 	public ResponseEntity<EvaluationRhResponse> validerSuperieur(
 			@PathVariable UUID identifiant,
 			@RequestBody(required = false) EvaluationValidationRequest requete) {
-		UUID acteur = requete != null ? requete.acteurIdentifiant() : null;
+		evaluationAccess.assertIsSuperieurOfRh(identifiant);
+		UUID acteur = evaluationAccess.requireCurrentActorId();
 		return ResponseEntity.ok(evaluationRhService.validerSuperieur(identifiant, acteur));
 	}
 
 	@PostMapping("/{identifiant}/integrer-formations-m05")
-	@PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_RH)
+	@PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<EvaluationRhResponse> integrerFormationsM05(@PathVariable UUID identifiant) {
 		return ResponseEntity.ok(evaluationRhService.integrerFormationsM05(identifiant));
 	}
 
 	@PostMapping("/{identifiant}/export-pdf")
-	@PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_RH)
+	@PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<EvaluationPdfArchiveResponse> exporterPdf(@PathVariable UUID identifiant) {
 		return ResponseEntity.ok(evaluationRhService.exporterPdf(identifiant));
 	}

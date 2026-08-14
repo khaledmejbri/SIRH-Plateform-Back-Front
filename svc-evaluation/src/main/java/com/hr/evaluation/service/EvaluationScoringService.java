@@ -77,9 +77,12 @@ public class EvaluationScoringService {
 
 		BigDecimal selfAverage = weightedAverage(lines, true);
 		BigDecimal managerAverage = weightedAverage(lines, false);
-		BigDecimal finalScore = managerAverage.multiply(BigDecimal.valueOf(0.7))
-				.add(selfAverage.multiply(BigDecimal.valueOf(0.3)))
-				.setScale(2, RoundingMode.HALF_UP);
+		boolean hasManagerNotes = lines.stream().anyMatch(line -> line.managerScore != null);
+		BigDecimal finalScore = hasManagerNotes
+				? managerAverage.multiply(BigDecimal.valueOf(0.7))
+						.add(selfAverage.multiply(BigDecimal.valueOf(0.3)))
+						.setScale(2, RoundingMode.HALF_UP)
+				: selfAverage;
 
 		List<EvaluationAnalyticsResponse.GapItem> gaps = lines.stream()
 				.filter(line -> line.selfScore != null && line.managerScore != null)
@@ -143,6 +146,16 @@ public class EvaluationScoringService {
 				improvements,
 				recommendations
 		);
+	}
+
+	/** Convertit le score final (échelle ~1–5) en note /20. */
+	public int toScoreSur20(BigDecimal finalScoreOn5) {
+		if (finalScoreOn5 == null) {
+			return 0;
+		}
+		return finalScoreOn5.multiply(BigDecimal.valueOf(4))
+				.setScale(0, RoundingMode.HALF_UP)
+				.intValue();
 	}
 
 	private AppreciationEvaluationRh appreciation(int scoreSur20) {

@@ -34,7 +34,11 @@ spring:
             - id: svc-evaluation
               uri: lb://svc-evaluation
               predicates:
-                - Path=/api/rh/v1/evaluations/**,/api/rh/v1/admin/evaluations/**
+                - Path=/api/rh/v1/evaluations/**,/api/rh/v1/admin/evaluations/**,/api/rh/v1/mobile/evaluations/**
+            - id: svc-presence
+              uri: lb://svc-presence
+              predicates:
+                - Path=/api/rh/v1/presence/**,/api/rh/v1/admin/presence/**,/api/rh/v1/mobile/presence/**
             - id: svc-referentiel-rh-v1
               uri: lb://svc-referentiel-rh
               predicates:

@@ -5,8 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/notifications/notification_model.dart';
 import '../../../core/notifications/notification_provider.dart';
-
 import '../auth/providers/collaborateur_notifier.dart';
+import '../evaluations/data/evaluation_models.dart';
 
 class NotificationsScreen extends ConsumerWidget {
   const NotificationsScreen({super.key});
@@ -66,17 +66,35 @@ class NotificationsScreen extends ConsumerWidget {
                   notif: notif,
                   onTap: () {
                     ref.read(notificationProvider.notifier).markRead(notif.id);
-                    
-                    final content = '${notif.subject} ${notif.content}'.toLowerCase();
-                    
+
+                    final evalLink = EvaluationNotificationLink.tryParse(
+                      subject: notif.subject,
+                      content: notif.content,
+                    );
+                    if (evalLink != null) {
+                      if (evalLink.hasDeepLink) {
+                        context.push('/evaluations/${evalLink.evaluationId}');
+                      } else {
+                        context.push('/evaluations');
+                      }
+                      return;
+                    }
+
+                    final content =
+                        '${notif.subject} ${notif.content}'.toLowerCase();
+
                     if (content.contains('document')) {
                       context.push('/documents');
-                    } else if (content.contains('actualité') || content.contains('news') || content.contains('feed')) {
-                      // Navigate to dashboard and feed could be clicked
+                    } else if (content.contains('actualité') ||
+                        content.contains('news') ||
+                        content.contains('feed')) {
                       context.go('/home');
-                    } else if (content.contains('congé') || content.contains('autorisation') || content.contains('demande')) {
+                    } else if (content.contains('congé') ||
+                        content.contains('autorisation') ||
+                        content.contains('demande')) {
                       context.push('/demandes-admin');
-                    } else if (content.contains('plainte') || content.contains('réclamation')) {
+                    } else if (content.contains('plainte') ||
+                        content.contains('réclamation')) {
                       context.push('/plaintes');
                     }
                   },
@@ -168,7 +186,7 @@ class _NotificationCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      notif.content,
+                      notif.displayContent,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),

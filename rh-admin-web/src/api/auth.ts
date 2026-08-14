@@ -38,7 +38,7 @@ export async function signIn(nomUtilisateur: string, motDePasse: string): Promis
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const token = getToken();
   const headers = new Headers(init.headers);
-  headers.set('Accept', 'application/json');
+  if (!headers.has('Accept')) headers.set('Accept', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
   return fetch(path, { ...init, headers });
 }

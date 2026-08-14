@@ -158,7 +158,7 @@ public class EvaluationSchedulerService {
         // For now, return test employee IDs
         // Replace these with actual employee IDs from your system
         return List.of(
-            UUID.fromString("0a4f7069-0737-4207-97dd-7a46a45f5429") // Test employee (current user)
+            UUID.fromString("fc9f8ae5-e205-4d7c-bfed-b926813f896d") // Test employee (current user)
         );
     }
 
@@ -208,16 +208,15 @@ public class EvaluationSchedulerService {
      */
     private void sendEvaluationNotification(Evaluation evaluation) {
         try {
-            // Send Kafka event to notify the evaluation service and trigger notifications
-            eventPublisher.publierAlerteSiNecessaire(
-                mapToEvaluationRh(evaluation, "NEW_EVALUATION_CREATED")
-            );
-            
-            log.info("📨 [EVALUATION SCHEDULER] Sent evaluation notification for evaluation {} to employee {}", 
+            // E5 — rh.notifications (pas topic alerte couleur)
+            String nom = evaluation.getCampaign() != null ? evaluation.getCampaign().getNom() : null;
+            eventPublisher.publierEvaluationCampagneOuverte(evaluation, nom);
+
+            log.info("📨 [EVALUATION SCHEDULER] Sent EVALUATION_CAMPAGNE_OUVERTE for evaluation {} to employee {}",
                     evaluation.getId(), evaluation.getCollaborateurIdentifiant());
 
         } catch (Exception e) {
-            log.error("❌ [EVALUATION SCHEDULER] Failed to send notification for evaluation {}: {}", 
+            log.error("❌ [EVALUATION SCHEDULER] Failed to send notification for evaluation {}: {}",
                     evaluation.getId(), e.getMessage());
         }
     }

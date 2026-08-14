@@ -196,10 +196,10 @@ class DemandeDocumentAdministratifRhServiceFifoTest {
 	class MarquerDisponibleFifoTests {
 
 		@Test
-		@DisplayName("❌ marquerDisponible bloqué si hors FIFO sans justification")
+		@DisplayName("❌ marquerDisponible bloqué si hors FIFO sans justification (toujours EN_ATTENTE)")
 		void marquerDisponible_bloqueHorsFifoSansJustification() {
-			// demandeB is EN_TRAITEMENT_RH but demandeA is still EN_ATTENTE_FILE
-			demandeB.setStatut(StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH);
+			// demandeB encore EN_ATTENTE_FILE alors que demandeA est la plus ancienne
+			demandeB.setStatut(StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE);
 
 			when(repository.findById(demandeB.getId())).thenReturn(Optional.of(demandeB));
 			when(repository.findFirstByStatutOrderByCreeLeAsc(
@@ -220,14 +220,13 @@ class DemandeDocumentAdministratifRhServiceFifoTest {
 		@Test
 		@DisplayName("✅ marquerDisponible autorisé si hors FIFO avec justification")
 		void marquerDisponible_autoriseAvecJustification() {
-			demandeB.setStatut(StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH);
+			demandeB.setStatut(StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE);
 
 			when(repository.findById(demandeB.getId())).thenReturn(Optional.of(demandeB));
 			when(repository.findFirstByStatutOrderByCreeLeAsc(
 					StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE))
 					.thenReturn(Optional.of(demandeA));
 			when(repository.save(any())).thenReturn(demandeB);
-			when(repository.countByStatutAndCreeLeBefore(any(), any())).thenReturn(0L);
 
 			DemandeDocumentDisponibleRequest req = new DemandeDocumentDisponibleRequest();
 			req.setReferenceLivrable("REF-001");
@@ -246,17 +245,30 @@ class DemandeDocumentAdministratifRhServiceFifoTest {
 			demandeA.setStatut(StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH);
 
 			when(repository.findById(demandeA.getId())).thenReturn(Optional.of(demandeA));
-			when(repository.findFirstByStatutOrderByCreeLeAsc(
-					StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE))
-					.thenReturn(Optional.empty()); // No more pending after demandeA taken
 			when(repository.save(any())).thenReturn(demandeA);
-			when(repository.countByStatutAndCreeLeBefore(any(), any())).thenReturn(0L);
 
 			DemandeDocumentDisponibleRequest req = new DemandeDocumentDisponibleRequest();
 			req.setReferenceLivrable("REF-002");
 
 			assertDoesNotThrow(() -> service.marquerDisponible(demandeA.getId(), req, null));
 			verify(repository).save(demandeA);
+		}
+
+		@Test
+		@DisplayName("✅ marquerDisponible — 1ʳᵉ en traitement + autres en file : sans justification (D-F04)")
+		void marquerDisponible_autoriseEnTraitementMemeSiAutresEnFile() {
+			demandeA.setStatut(StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH);
+
+			when(repository.findById(demandeA.getId())).thenReturn(Optional.of(demandeA));
+			when(repository.save(any())).thenReturn(demandeA);
+
+			DemandeDocumentDisponibleRequest req = new DemandeDocumentDisponibleRequest();
+			req.setReferenceLivrable("REF-003");
+			req.setJustificationDerogationFifo(null);
+
+			assertDoesNotThrow(() -> service.marquerDisponible(demandeA.getId(), req, null));
+			verify(repository).save(demandeA);
+			assertNull(demandeA.getJustificationDerogationFifo());
 		}
 	}
 
@@ -292,7 +304,6 @@ class DemandeDocumentAdministratifRhServiceFifoTest {
 					StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE))
 					.thenReturn(Optional.of(demandeA));
 			when(repository.save(any())).thenReturn(demandeC);
-			when(repository.countByStatutAndCreeLeBefore(any(), any())).thenReturn(0L);
 
 			DocumentRejetRhRequest req = new DocumentRejetRhRequest();
 			req.setMotif("Document incorrect");
@@ -313,7 +324,6 @@ class DemandeDocumentAdministratifRhServiceFifoTest {
 					StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE))
 					.thenReturn(Optional.of(demandeA));
 			when(repository.save(any())).thenReturn(demandeA);
-			when(repository.countByStatutAndCreeLeBefore(any(), any())).thenReturn(0L);
 
 			DocumentRejetRhRequest req = new DocumentRejetRhRequest();
 			req.setMotif("Demande invalide");
@@ -341,21 +351,12 @@ class DemandeDocumentAdministratifRhServiceFifoTest {
 		}
 
 		@Test
-		@DisplayName("✅ Demande EN_TRAITEMENT_RH avec d'autres EN_ATTENTE mais même ID → autorisé")
-		void demandeEnTraitementMaisIdCorrespondALaPlusAncienne() {
+		@DisplayName("✅ Demande EN_TRAITEMENT_RH se clôture sans justification même si d'autres attendent (D-F04)")
+		void demandeEnTraitementSeClotureSansJustification() {
 			demandeA.setStatut(StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH);
 
-			// The oldest pending is different but demandeA's ID matches oldest
-			// This simulates the case where demandeA was taken from queue but there's
-			// another pending — we check against EN_ATTENTE_FILE, so if no older pending exists, it's fine
-			when(repository.findFirstByStatutOrderByCreeLeAsc(
-					StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE))
-					.thenReturn(Optional.of(demandeB)); // demandeB is now oldest pending
-
-			// demandeA (EN_TRAITEMENT_RH) != demandeB (oldest pending)
-			// But demandeA needs justification since it's not the oldest pending
-			assertThrows(IllegalStateException.class,
-					() -> service.validerOrdreFifo(demandeA, null, null));
+			assertDoesNotThrow(() -> service.validerOrdreFifo(demandeA, null, null));
+			verify(repository, never()).findFirstByStatutOrderByCreeLeAsc(any());
 		}
 
 		@Test

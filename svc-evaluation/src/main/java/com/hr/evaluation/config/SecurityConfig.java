@@ -31,8 +31,10 @@ public class SecurityConfig {
 				.csrf(csrf -> csrf.disable())
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+						// RBAC fin via @PreAuthorize (LECTURE / ECRITURE / ownership)
 						.requestMatchers("/api/rh/v1/evaluations/**").authenticated()
 						.requestMatchers("/api/rh/v1/admin/evaluations/**").authenticated()
+						.requestMatchers("/api/rh/v1/mobile/evaluations/**").authenticated()
 						.anyRequest().denyAll())
 				.oauth2ResourceServer(oauth2 -> oauth2
 						.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));

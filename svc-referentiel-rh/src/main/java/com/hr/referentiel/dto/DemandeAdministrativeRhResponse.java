@@ -41,6 +41,13 @@ public class DemandeAdministrativeRhResponse {
 	@JsonProperty("modifie_le")
 	private Instant modifieLe;
 
+	/** Snapshot M01 (H2 Should) — null si skip RRH. */
+	@JsonProperty("valideur_attendu_identifiant")
+	private UUID valideurAttenduIdentifiant;
+
+	@JsonProperty("valideur_attendu_nom_complet")
+	private String valideurAttenduNomComplet;
+
 	public DemandeAdministrativeRhResponse() {
 	}
 
@@ -97,5 +104,21 @@ public class DemandeAdministrativeRhResponse {
 
 	public Instant getModifieLe() {
 		return modifieLe;
+	}
+
+	public UUID getValideurAttenduIdentifiant() {
+		return valideurAttenduIdentifiant;
+	}
+
+	public void setValideurAttenduIdentifiant(UUID valideurAttenduIdentifiant) {
+		this.valideurAttenduIdentifiant = valideurAttenduIdentifiant;
+	}
+
+	public String getValideurAttenduNomComplet() {
+		return valideurAttenduNomComplet;
+	}
+
+	public void setValideurAttenduNomComplet(String valideurAttenduNomComplet) {
+		this.valideurAttenduNomComplet = valideurAttenduNomComplet;
 	}
 }

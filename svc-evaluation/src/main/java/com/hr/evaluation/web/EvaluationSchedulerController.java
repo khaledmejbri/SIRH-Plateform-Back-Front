@@ -2,13 +2,15 @@ package com.hr.evaluation.web;
 
 import com.hr.evaluation.service.EvaluationSchedulerService;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
 /**
- * Controller for manually triggering the evaluation scheduler.
- * Useful for testing and administrative purposes.
+ * Declenchement manuel du cycle d'evaluations (tests / admin RH).
  */
 @RestController
 @RequestMapping("/api/rh/v1/evaluations/admin")
@@ -20,14 +22,11 @@ public class EvaluationSchedulerController {
         this.schedulerService = schedulerService;
     }
 
-    /**
-     * Manually trigger the evaluation creation cycle.
-     * Useful for testing without waiting for the scheduled execution.
-     */
     @PostMapping("/trigger-evaluation-cycle")
+    @PreAuthorize(EvaluationSecurityExpressions.BACKOFFICE_ECRITURE)
     public ResponseEntity<Map<String, String>> triggerEvaluationCycle() {
         schedulerService.triggerEvaluationCycle();
-        
+
         return ResponseEntity.ok(Map.of(
             "status", "success",
             "message", "Evaluation cycle triggered successfully. Check logs for details."

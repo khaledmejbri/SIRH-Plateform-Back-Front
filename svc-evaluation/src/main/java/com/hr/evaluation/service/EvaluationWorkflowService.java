@@ -1,8 +1,12 @@
 package com.hr.evaluation.service;
 
+import com.hr.evaluation.domain.EvaluationCampaignStatus;
 import com.hr.evaluation.domain.EvaluationStep;
+import com.hr.evaluation.domain.NiveauSenioriteCodes;
 import com.hr.evaluation.domain.SkillLevel;
 import com.hr.evaluation.domain.StatutEvaluationRh;
+import com.hr.evaluation.domain.TemplateStatus;
+import com.hr.evaluation.domain.TemplateType;
 import com.hr.evaluation.entity.*;
 import com.hr.evaluation.repository.*;
 import org.springframework.stereotype.Service;
@@ -10,8 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 public class EvaluationWorkflowService {
@@ -22,7 +26,8 @@ public class EvaluationWorkflowService {
     private final SkillAnswerRepository skillAnswerRepository;
     private final EvaluationQuestionRepository questionRepository;
     private final TechnicalQuestionRepository technicalQuestionRepository;
-    private final TechnicalTemplateService technicalTemplateService;
+    private final EvaluationTemplateRepository templateRepository;
+    private final EvaluationScoringService scoringService;
 
     public EvaluationWorkflowService(
             EvaluationRepository evaluationRepository,
@@ -31,14 +36,16 @@ public class EvaluationWorkflowService {
             SkillAnswerRepository skillAnswerRepository,
             EvaluationQuestionRepository questionRepository,
             TechnicalQuestionRepository technicalQuestionRepository,
-            TechnicalTemplateService technicalTemplateService) {
+            EvaluationTemplateRepository templateRepository,
+            EvaluationScoringService scoringService) {
         this.evaluationRepository = evaluationRepository;
         this.campaignRepository = campaignRepository;
         this.answerRepository = answerRepository;
         this.skillAnswerRepository = skillAnswerRepository;
         this.questionRepository = questionRepository;
         this.technicalQuestionRepository = technicalQuestionRepository;
-        this.technicalTemplateService = technicalTemplateService;
+        this.templateRepository = templateRepository;
+        this.scoringService = scoringService;
     }
 
     @Transactional
@@ -46,19 +53,48 @@ public class EvaluationWorkflowService {
             UUID campaignId,
             UUID collaborateurId,
             UUID superieurId) {
+        return creerEvaluationPourCollaborateur(campaignId, collaborateurId, superieurId, null, null);
+    }
+
+    /**
+     * Legacy — matching via role_metier déprécié ; préférer {@link #creerEvaluationDepuisSnapshot}.
+     */
+    @Transactional
+    public Evaluation creerEvaluationPourCollaborateur(
+            UUID campaignId,
+            UUID collaborateurId,
+            UUID superieurId,
+            String niveauSeniorite,
+            String roleMetier) {
 
         EvaluationCampaign campaign = chargerCampaign(campaignId);
+        return creerEvaluationDepuisSnapshot(
+                campaign, collaborateurId, superieurId, roleMetier, niveauSeniorite);
+    }
 
-        // Verify campaign is active
-        if (campaign.getStatut() != com.hr.evaluation.domain.EvaluationCampaignStatus.ACTIVE) {
+    /**
+     * Création avec snapshot figé famille × niveau (E4). Ne lit plus les params client.
+     */
+    @Transactional
+    public Evaluation creerEvaluationDepuisSnapshot(
+            EvaluationCampaign campaign,
+            UUID collaborateurId,
+            UUID superieurId,
+            String familleMetierCode,
+            String niveauSeniorite) {
+
+        if (campaign.getStatut() != EvaluationCampaignStatus.ACTIVE) {
             throw new IllegalStateException("La campagne n'est pas active");
         }
 
-        // Check if evaluation already exists
-        evaluationRepository.findByCampaignIdAndCollaborateurIdentifiant(campaignId, collaborateurId)
+        evaluationRepository.findByCampaignIdAndCollaborateurIdentifiant(campaign.getId(), collaborateurId)
                 .ifPresent(existing -> {
                     throw new IllegalStateException("Une évaluation existe déjà pour ce collaborateur dans cette campagne");
                 });
+
+        String famille = trimToNull(familleMetierCode);
+        String niveau = NiveauSenioriteCodes.normalizeOrNull(niveauSeniorite);
+        boolean profilIncomplet = famille == null;
 
         Evaluation evaluation = new Evaluation();
         evaluation.setCampaign(campaign);
@@ -66,8 +102,86 @@ public class EvaluationWorkflowService {
         evaluation.setSuperieurIdentifiant(superieurId);
         evaluation.setEtapeActuelle(EvaluationStep.EVALUATION_GENERALE);
         evaluation.setStatut(StatutEvaluationRh.EN_ATTENTE_VALIDATION_CROISEE);
+        evaluation.setFamilleMetierCode(famille);
+        evaluation.setNiveauSeniorite(niveau);
+        evaluation.setProfilMetierIncomplet(profilIncomplet);
+        // Legacy lecture : ne plus écrire role_metier comme clé matching
+        evaluation.setRoleMetier(null);
+        evaluation.setTemplateCompetenceAssigne(
+                resoudreTemplateCompetence(famille, niveau, campaign));
 
         return evaluationRepository.save(evaluation);
+    }
+
+    /**
+     * Ensure mobile : ne crée plus depuis params client (E4-R11).
+     * Retourne l'évaluation existante sur campagne ACTIVE si présente ; sinon null.
+     */
+    @Transactional(readOnly = true)
+    public Evaluation assurerEvaluationPourCollaborateur(
+            UUID collaborateurId,
+            UUID superieurId,
+            String niveauSenioriteIgnore,
+            String roleMetierIgnore) {
+
+        List<EvaluationCampaign> actives = campaignRepository
+                .findByStatutOrderByDateDebutDescWithTemplates(EvaluationCampaignStatus.ACTIVE);
+        if (actives.isEmpty()) {
+            throw new IllegalStateException(
+                    "Aucune campagne ACTIVE. Créez et activez une campagne côté admin (avec template général).");
+        }
+
+        EvaluationCampaign campaign = actives.get(0);
+        return evaluationRepository
+                .findByCampaignIdAndCollaborateurIdentifiant(campaign.getId(), collaborateurId)
+                .orElse(null);
+    }
+
+    /**
+     * Résolution TECHNICAL (E4-R05) :
+     * 1) famille+niveau 2) famille seule 3) template compétence campagne 4) null
+     * {@code profil_acces} ignoré.
+     */
+    public EvaluationTemplate resoudreTemplateCompetence(
+            String familleMetierCode,
+            String niveauSeniorite,
+            EvaluationCampaign campaign) {
+
+        String famille = trimToNull(familleMetierCode);
+        String niveau = NiveauSenioriteCodes.normalizeOrNull(niveauSeniorite);
+
+        if (famille != null && niveau != null) {
+            List<EvaluationTemplate> exact = templateRepository.findPublishedByTypeFamilleAndNiveau(
+                    TemplateType.TECHNICAL, TemplateStatus.PUBLISHED, famille, niveau);
+            if (!exact.isEmpty()) {
+                return exact.get(0);
+            }
+        }
+        if (famille != null) {
+            List<EvaluationTemplate> familleSeule = templateRepository.findPublishedByTypeAndFamilleSansNiveau(
+                    TemplateType.TECHNICAL, TemplateStatus.PUBLISHED, famille);
+            if (!familleSeule.isEmpty()) {
+                return familleSeule.get(0);
+            }
+            // Fallback : templates famille avec n'importe quel niveau si aucun « famille seule »
+            List<EvaluationTemplate> familleAny = templateRepository.findPublishedByTypeAndFamille(
+                    TemplateType.TECHNICAL, TemplateStatus.PUBLISHED, famille);
+            // Prefer those with null niveau already handled above; here skip if we want strict order
+            // Spec step 2 is famille seule only — do not pick random niveau
+        }
+        if (campaign != null && campaign.getTemplateCompetence() != null) {
+            return campaign.getTemplateCompetence();
+        }
+        return null;
+    }
+
+    /** @deprecated matching legacy role+niveau — délégué à famille. */
+    @Deprecated
+    public EvaluationTemplate resoudreTemplateCompetenceLegacy(
+            String niveauSeniorite,
+            String roleMetier,
+            EvaluationCampaign campaign) {
+        return resoudreTemplateCompetence(roleMetier, niveauSeniorite, campaign);
     }
 
     @Transactional
@@ -98,6 +212,7 @@ public class EvaluationWorkflowService {
         answer.setReponduParCollaborateurLe(Instant.now());
 
         answerRepository.save(answer);
+        recalculerScore(evaluation);
     }
 
     @Transactional
@@ -124,6 +239,7 @@ public class EvaluationWorkflowService {
         answer.setReponduParManagerLe(Instant.now());
 
         answerRepository.save(answer);
+        recalculerScore(evaluation);
     }
 
     @Transactional
@@ -153,6 +269,7 @@ public class EvaluationWorkflowService {
         answer.setEvalueParCollaborateurLe(Instant.now());
 
         skillAnswerRepository.save(answer);
+        recalculerScore(evaluation);
     }
 
     @Transactional
@@ -174,6 +291,7 @@ public class EvaluationWorkflowService {
         answer.setEvalueParManagerLe(Instant.now());
 
         skillAnswerRepository.save(answer);
+        recalculerScore(evaluation);
     }
 
     @Transactional
@@ -181,18 +299,16 @@ public class EvaluationWorkflowService {
         Evaluation evaluation = chargerEvaluation(evaluationId);
         EvaluationCampaign campaign = evaluation.getCampaign();
 
-        // Get the general template from the campaign
         EvaluationTemplate templateGeneral = campaign.getTemplateGeneral();
         if (templateGeneral == null) {
             throw new IllegalStateException("La campagne n'a pas de template général configuré");
         }
 
-        // Verify all general questions are answered by collaborator
         List<EvaluationQuestion> questions = questionRepository
                 .findByTemplateIdAndActifTrueOrderByOrdreAsc(templateGeneral.getId());
 
         long unansweredCount = questions.stream()
-                .filter(q -> q.isObligatoire())
+                .filter(EvaluationQuestion::isObligatoire)
                 .filter(q -> answerRepository.findByEvaluationIdAndQuestionId(evaluationId, q.getId()).isEmpty())
                 .count();
 
@@ -200,6 +316,7 @@ public class EvaluationWorkflowService {
             throw new IllegalStateException(unansweredCount + " questions obligatoires sans réponse");
         }
 
+        // Snapshot immuable — ne pas recalculer depuis fiche ; garder template déjà assigné
         evaluation.setEtapeActuelle(EvaluationStep.EVALUATION_TECHNIQUE);
         evaluationRepository.save(evaluation);
     }
@@ -207,20 +324,18 @@ public class EvaluationWorkflowService {
     @Transactional
     public Evaluation validerParCollaborateur(UUID evaluationId) {
         Evaluation evaluation = chargerEvaluation(evaluationId);
-
         evaluation.setValidationCollaborateurLe(Instant.now());
+        recalculerScore(evaluation);
         actualiserStatut(evaluation);
-
         return evaluationRepository.save(evaluation);
     }
 
     @Transactional
     public Evaluation validerParManager(UUID evaluationId) {
         Evaluation evaluation = chargerEvaluation(evaluationId);
-
         evaluation.setValidationSuperieurLe(Instant.now());
+        recalculerScore(evaluation);
         actualiserStatut(evaluation);
-
         return evaluationRepository.save(evaluation);
     }
 
@@ -249,6 +364,14 @@ public class EvaluationWorkflowService {
         return chargerEvaluation(id);
     }
 
+    private void recalculerScore(Evaluation evaluation) {
+        var analytics = scoringService.analyser(
+                obtenirReponsesEvaluation(evaluation.getId()),
+                obtenirReponsesTechniques(evaluation.getId()));
+        evaluation.setScoreSur20(scoringService.toScoreSur20(analytics.finalScore()));
+        evaluationRepository.save(evaluation);
+    }
+
     private void actualiserStatut(Evaluation evaluation) {
         boolean collaborateur = evaluation.getValidationCollaborateurLe() != null;
         boolean superieur = evaluation.getValidationSuperieurLe() != null;
@@ -263,11 +386,11 @@ public class EvaluationWorkflowService {
     }
 
     private void verifyCollaboratorCanAnswer(Evaluation evaluation) {
-        // Add logic to verify current user is the collaborator
+        // Ownership enforced at controller layer for mobile
     }
 
     private void verifyManagerCanAnswer(Evaluation evaluation) {
-        // Add logic to verify current user is the manager
+        // Ownership enforced at controller layer for mobile
     }
 
     private Evaluation chargerEvaluation(UUID id) {
@@ -278,5 +401,13 @@ public class EvaluationWorkflowService {
     private EvaluationCampaign chargerCampaign(UUID id) {
         return campaignRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Campagne introuvable: " + id));
+    }
+
+    private static String trimToNull(String s) {
+        if (s == null) {
+            return null;
+        }
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
     }
 }

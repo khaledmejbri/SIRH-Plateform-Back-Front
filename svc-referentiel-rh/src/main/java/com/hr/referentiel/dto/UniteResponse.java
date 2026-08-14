@@ -19,6 +19,12 @@ public class UniteResponse {
 	@JsonProperty("parent_identifiant")
 	private UUID parentIdentifiant;
 
+	@JsonProperty("type_noeud")
+	private String typeNoeud;
+
+	@JsonProperty("titre_poste")
+	private String titrePoste;
+
 	@JsonProperty("actif")
 	private boolean actif;
 
@@ -33,10 +39,17 @@ public class UniteResponse {
 
 	public UniteResponse(UUID identifiant, String code, String libelle, UUID parentIdentifiant,
 			boolean actif, Instant creeLe, Instant modifieLe) {
+		this(identifiant, code, libelle, parentIdentifiant, null, null, actif, creeLe, modifieLe);
+	}
+
+	public UniteResponse(UUID identifiant, String code, String libelle, UUID parentIdentifiant,
+			String typeNoeud, String titrePoste, boolean actif, Instant creeLe, Instant modifieLe) {
 		this.identifiant = identifiant;
 		this.code = code;
 		this.libelle = libelle;
 		this.parentIdentifiant = parentIdentifiant;
+		this.typeNoeud = typeNoeud;
+		this.titrePoste = titrePoste;
 		this.actif = actif;
 		this.creeLe = creeLe;
 		this.modifieLe = modifieLe;
@@ -72,6 +85,22 @@ public class UniteResponse {
 
 	public void setParentIdentifiant(UUID parentIdentifiant) {
 		this.parentIdentifiant = parentIdentifiant;
+	}
+
+	public String getTypeNoeud() {
+		return typeNoeud;
+	}
+
+	public void setTypeNoeud(String typeNoeud) {
+		this.typeNoeud = typeNoeud;
+	}
+
+	public String getTitrePoste() {
+		return titrePoste;
+	}
+
+	public void setTitrePoste(String titrePoste) {
+		this.titrePoste = titrePoste;
 	}
 
 	public boolean isActif() {

@@ -218,6 +218,12 @@ public class DemandeDocumentAdministratifRhService {
 	 * @throws IllegalStateException si l'ordre FIFO est violé sans justification
 	 */
 	void validerOrdreFifo(DemandeDocumentAdministratifRh demande, String justificationDerogation, Jwt jwt) {
+		// Demande déjà prise en traitement (via prendre-prochaine ou reprise) :
+		// elle est la tête de file active — pas de dérogation à re-demander pour clôturer (D-F04).
+		if (demande.getStatut() == StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH) {
+			return;
+		}
+
 		// Si le RH tente de traiter une nouvelle demande alors qu'il y en a déjà une en cours, on bloque.
 		if (demande.getStatut() == StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE) {
 			if (repository.existsByStatut(StatutDocumentAdministratifDemandeRh.EN_TRAITEMENT_RH)) {
@@ -229,13 +235,12 @@ public class DemandeDocumentAdministratifRhService {
 				.findFirstByStatutOrderByCreeLeAsc(StatutDocumentAdministratifDemandeRh.EN_ATTENTE_FILE);
 
 		// S'il n'y a aucune demande en attente, ou si la demande courante EST la plus ancienne → OK
-		// Pas besoin de donnée justificative pour le premier
 		if (plusAncienne.isEmpty() || plusAncienne.get().getId().equals(demande.getId())) {
 			return;
 		}
 
 		// La demande n'est pas la prochaine dans l'ordre FIFO
-		// → une justification est obligatoire
+		// → une justification est obligatoire (D-F03)
 		if (justificationDerogation == null || justificationDerogation.isBlank()) {
 			throw new IllegalStateException(MSG_VIOLATION_FIFO);
 		}

@@ -40,6 +40,7 @@
 		<module>svc-identite-acces</module>
 		<module>svc-referentiel-rh</module>
 		<module>svc-evaluation</module>
+		<module>svc-presence</module>
 		<module>svc-notification</module>
 	</modules>
 </project>

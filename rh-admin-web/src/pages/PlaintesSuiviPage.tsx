@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getPlaintesRh, patchPlainteStatut, type PlainteRh } from '../api/rhClient';
+import { useLectureSeule } from '../auth/useLectureSeule';
 
 /**
  * CDC v2 §M04 corrections :
@@ -23,6 +24,7 @@ const TRANSITIONS: Record<string, string[]> = {
 };
 
 export default function PlaintesSuiviPage() {
+  const lectureSeule = useLectureSeule();
   const [rows, setRows]         = useState<PlainteRh[]>([]);
   const [loading, setLoading]   = useState(true);
   const [err, setErr]           = useState<string | null>(null);
@@ -185,7 +187,9 @@ export default function PlaintesSuiviPage() {
                       </span>
                     </td>
                     <td>
-                      {(TRANSITIONS[p.statut]?.length ?? 0) > 0 ? (
+                      {lectureSeule ? (
+                        <span className="muted" style={{ fontSize: 12 }}>Lecture seule</span>
+                      ) : (TRANSITIONS[p.statut]?.length ?? 0) > 0 ? (
                         <button type="button" className="btn btn--sm btn--ghost" onClick={() => openEdit(p)}>
                           Traiter →
                         </button>

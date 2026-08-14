@@ -77,6 +77,18 @@ export default function DemandesAdministrativesPage() {
       .map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
   }
 
+  function formatTypeConge(code: string | undefined): string | null {
+    if (!code) return null;
+    const map: Record<string, string> = {
+      ANNUEL: 'Annuel',
+      MALADIE: 'Maladie',
+      MATERNITE: 'Maternité',
+      SANS_SOLDE: 'Sans solde',
+      AUTRE: 'Autre',
+    };
+    return map[code.toUpperCase()] ?? code;
+  }
+
   function getTypeStyle(type: string): { bg: string; color: string } {
     if (type === 'AUTORISATION_SORTIE') return { bg: '#eff6ff', color: '#2563eb' };
     if (type === 'CONGE') return { bg: '#fff7ed', color: '#ea580c' };
@@ -203,6 +215,15 @@ export default function DemandesAdministrativesPage() {
                         }}>
                           <span>{getTypeIcon(d.type_demande)}</span>
                           {formatTypeDemande(d.type_demande)}
+                          {d.type_demande === 'CONGE' && formatTypeConge(
+                            (d.contenu as { type_conge?: string } | undefined)?.type_conge,
+                          ) ? (
+                            <span style={{ fontWeight: 500, opacity: 0.85 }}>
+                              · {formatTypeConge(
+                                (d.contenu as { type_conge?: string }).type_conge,
+                              )}
+                            </span>
+                          ) : null}
                         </span>
                       </td>
                       <td style={{ padding: '16px 20px' }}>

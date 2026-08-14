@@ -23,9 +23,21 @@ public class UniteOrganisation {
 	@Column(name = "libelle", nullable = false, length = 255)
 	private String libelle;
 
+	/** Type libre du nœud (ex. CEO, Direction, Département, Unité, CTO). */
+	@Column(name = "type_noeud", length = 120)
+	private String typeNoeud;
+
+	/** Titre libre du poste de management sur ce nœud (ex. Directeur IT, Chef de département). */
+	@Column(name = "titre_poste", length = 255)
+	private String titrePoste;
+
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "parent_identifiant")
 	private UniteOrganisation parent;
+
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "manager_identifiant")
+	private Collaborateur manager;
 
 	@Column(name = "actif", nullable = false)
 	private boolean actif = true;
@@ -75,12 +87,36 @@ public class UniteOrganisation {
 		this.libelle = libelle;
 	}
 
+	public String getTypeNoeud() {
+		return typeNoeud;
+	}
+
+	public void setTypeNoeud(String typeNoeud) {
+		this.typeNoeud = typeNoeud;
+	}
+
+	public String getTitrePoste() {
+		return titrePoste;
+	}
+
+	public void setTitrePoste(String titrePoste) {
+		this.titrePoste = titrePoste;
+	}
+
 	public UniteOrganisation getParent() {
 		return parent;
 	}
 
 	public void setParent(UniteOrganisation parent) {
 		this.parent = parent;
+	}
+
+	public Collaborateur getManager() {
+		return manager;
+	}
+
+	public void setManager(Collaborateur manager) {
+		this.manager = manager;
 	}
 
 	public boolean isActif() {

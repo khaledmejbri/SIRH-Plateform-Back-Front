@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 
 import '../data/demande_admin_models.dart';
 import '../data/demande_admin_repository.dart';
+import '../data/demande_admin_errors.dart';
+import '../data/type_conge.dart';
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
@@ -14,8 +16,8 @@ final roDemandesEnAttenteProvider =
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
-/// Écran RO — liste des demandes de l'unité en attente de validation.
-/// Accessible uniquement si profil_acces = RO ou RESPONSABLE.
+/// File M01 — demandes dont le connecté est le manager ACTIF du nœud
+/// (`valideur_attendu`). Accessible à tout USER ; le JWT RO n’est qu’un indice UI.
 class RoValidationScreen extends ConsumerWidget {
   const RoValidationScreen({super.key});
 
@@ -43,7 +45,7 @@ class RoValidationScreen extends ConsumerWidget {
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ErrorView(
-          message: e.toString(),
+          message: messageErreurDemandeAdmin(e, fallback: e.toString()),
           onRetry: () => ref.invalidate(roDemandesEnAttenteProvider),
         ),
         data: (items) => items.isEmpty
@@ -267,7 +269,7 @@ class _DemandeCard extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur : $e'),
+            content: Text(messageErreurDemandeAdmin(e)),
             backgroundColor: const Color(0xFFDC2626),
           ),
         );
@@ -346,7 +348,7 @@ class _DemandeCard extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur : $e'),
+            content: Text(messageErreurDemandeAdmin(e)),
             backgroundColor: const Color(0xFFDC2626),
           ),
         );
@@ -382,8 +384,9 @@ class _PeriodRow extends StatelessWidget {
       // CONGE
       final debut = item.periodeDebut ?? '—';
       final fin = item.periodeFin ?? '—';
-      final type = item.contenu?['type_conge'] as String? ?? '';
-      label = type.isNotEmpty ? '$type  ·  $debut → $fin' : '$debut → $fin';
+      final typeCode = item.contenu?['type_conge'] as String? ?? '';
+      final typeLabel = libelleTypeConge(typeCode);
+      label = typeLabel.isNotEmpty ? '$typeLabel  ·  $debut → $fin' : '$debut → $fin';
       icon = Icons.calendar_month_rounded;
     }
 
@@ -421,7 +424,7 @@ class _StatusPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        'En attente RO',
+        'En attente validation',
         style: const TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w700,
@@ -536,7 +539,7 @@ class _EmptyView extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Toutes les demandes de votre unité ont été traitées.',
+              'Toutes les demandes assignées à votre nœud ont été traitées.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
             ),

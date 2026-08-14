@@ -14,14 +14,15 @@ import java.util.UUID;
 
 /**
  * Congé, autorisation de sortie ou ordre de mission — contenu JSON selon le type (CDC annexes).
- * Workflow CDC : employé → supérieur (si défini) → RRH.
+ * Workflow : employé → manager ACTIF du nœud d'unité (si défini, snapshot) → RRH.
  */
 @Entity
 @Table(name = "rh_demande_administrative", indexes = {
 		@Index(name = "idx_demande_collab", columnList = "demandeur_identifiant"),
 		@Index(name = "idx_demande_statut", columnList = "statut"),
 		@Index(name = "idx_demande_type", columnList = "type_demande"),
-		@Index(name = "idx_demande_periode", columnList = "periode_debut,periode_fin")
+		@Index(name = "idx_demande_periode", columnList = "periode_debut,periode_fin"),
+		@Index(name = "idx_demande_valideur_attendu", columnList = "valideur_attendu_identifiant")
 })
 public class DemandeAdministrativeRh {
 
@@ -37,6 +38,14 @@ public class DemandeAdministrativeRh {
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "demandeur_identifiant", nullable = false)
 	private Collaborateur demandeur;
+
+	/**
+	 * Snapshot du manager ACTIF du nœud d'unité à la création (source de vérité pour valider M01).
+	 * Null si aucun manager actif → étape superieur sautée vers RRH.
+	 */
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "valideur_attendu_identifiant")
+	private Collaborateur valideurAttendu;
 
 	@Enumerated(EnumType.STRING)
 	@Column(name = "statut", nullable = false, length = 40)
@@ -100,6 +109,14 @@ public class DemandeAdministrativeRh {
 
 	public void setDemandeur(Collaborateur demandeur) {
 		this.demandeur = demandeur;
+	}
+
+	public Collaborateur getValideurAttendu() {
+		return valideurAttendu;
+	}
+
+	public void setValideurAttendu(Collaborateur valideurAttendu) {
+		this.valideurAttendu = valideurAttendu;
 	}
 
 	public StatutDemandeAdministrativeRh getStatut() {

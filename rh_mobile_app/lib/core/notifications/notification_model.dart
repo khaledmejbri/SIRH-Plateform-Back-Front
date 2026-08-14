@@ -42,4 +42,22 @@ class AppNotification {
 
   bool get isFormationInvitation => type == 'FORMATION_INVITATION';
   String? get formationId => metadata?['formation_id'] as String?;
+
+  /// Contenu affiché (masque le préfixe technique E5 si présent).
+  String get displayContent {
+    final raw = content.trim();
+    if (!raw.startsWith('EVALUATION_CAMPAGNE_OUVERTE')) return content;
+    final parts = raw.split('|');
+    for (var i = parts.length - 1; i >= 0; i--) {
+      final p = parts[i].trim();
+      if (p.isEmpty ||
+          p == 'EVALUATION_CAMPAGNE_OUVERTE' ||
+          p.startsWith('evaluation=') ||
+          p.startsWith('campagne=')) {
+        continue;
+      }
+      return p;
+    }
+    return subject;
+  }
 }

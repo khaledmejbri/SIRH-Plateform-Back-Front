@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Suivi du workflow CDC : employé → supérieur (si présent) → RRH → clôture.
+ * Suivi du workflow M01 : employé → responsable de service (si snapshot) → RRH → clôture.
  */
 public class DemandeAdministrativeSuiviResponse {
 
@@ -23,6 +23,21 @@ public class DemandeAdministrativeSuiviResponse {
 
 	@JsonProperty("etape_superieur_requise")
 	private boolean etapeSuperieurRequise;
+
+	@JsonProperty("valideur_attendu_identifiant")
+	private UUID valideurAttenduIdentifiant;
+
+	@JsonProperty("valideur_attendu_matricule")
+	private String valideurAttenduMatricule;
+
+	@JsonProperty("valideur_attendu_nom_complet")
+	private String valideurAttenduNomComplet;
+
+	@JsonProperty("valideur_attendu_libelle_role")
+	private String valideurAttenduLibelleRole;
+
+	@JsonProperty("message_explication")
+	private String messageExplication;
 
 	@JsonProperty("etapes")
 	private List<WorkflowEtapeResponse> etapes;
@@ -44,19 +59,79 @@ public class DemandeAdministrativeSuiviResponse {
 		return identifiant;
 	}
 
+	public void setIdentifiant(UUID identifiant) {
+		this.identifiant = identifiant;
+	}
+
 	public TypeDemandeAdministrativeRh getTypeDemande() {
 		return typeDemande;
+	}
+
+	public void setTypeDemande(TypeDemandeAdministrativeRh typeDemande) {
+		this.typeDemande = typeDemande;
 	}
 
 	public StatutDemandeAdministrativeRh getStatut() {
 		return statut;
 	}
 
+	public void setStatut(StatutDemandeAdministrativeRh statut) {
+		this.statut = statut;
+	}
+
 	public boolean isEtapeSuperieurRequise() {
 		return etapeSuperieurRequise;
 	}
 
+	public void setEtapeSuperieurRequise(boolean etapeSuperieurRequise) {
+		this.etapeSuperieurRequise = etapeSuperieurRequise;
+	}
+
+	public UUID getValideurAttenduIdentifiant() {
+		return valideurAttenduIdentifiant;
+	}
+
+	public void setValideurAttenduIdentifiant(UUID valideurAttenduIdentifiant) {
+		this.valideurAttenduIdentifiant = valideurAttenduIdentifiant;
+	}
+
+	public String getValideurAttenduMatricule() {
+		return valideurAttenduMatricule;
+	}
+
+	public void setValideurAttenduMatricule(String valideurAttenduMatricule) {
+		this.valideurAttenduMatricule = valideurAttenduMatricule;
+	}
+
+	public String getValideurAttenduNomComplet() {
+		return valideurAttenduNomComplet;
+	}
+
+	public void setValideurAttenduNomComplet(String valideurAttenduNomComplet) {
+		this.valideurAttenduNomComplet = valideurAttenduNomComplet;
+	}
+
+	public String getValideurAttenduLibelleRole() {
+		return valideurAttenduLibelleRole;
+	}
+
+	public void setValideurAttenduLibelleRole(String valideurAttenduLibelleRole) {
+		this.valideurAttenduLibelleRole = valideurAttenduLibelleRole;
+	}
+
+	public String getMessageExplication() {
+		return messageExplication;
+	}
+
+	public void setMessageExplication(String messageExplication) {
+		this.messageExplication = messageExplication;
+	}
+
 	public List<WorkflowEtapeResponse> getEtapes() {
 		return etapes;
+	}
+
+	public void setEtapes(List<WorkflowEtapeResponse> etapes) {
+		this.etapes = etapes;
 	}
 }

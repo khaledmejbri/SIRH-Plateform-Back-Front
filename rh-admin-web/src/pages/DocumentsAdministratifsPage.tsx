@@ -6,8 +6,10 @@ import {
   postDocumentRejet,
   type DemandeDocument,
 } from '../api/rhClient';
+import { useLectureSeule } from '../auth/useLectureSeule';
 
 export default function DocumentsAdministratifsPage() {
+  const lectureSeule = useLectureSeule();
   const [rows, setRows]                   = useState<DemandeDocument[]>([]);
   const [loading, setLoading]             = useState(true);
   const [err, setErr]                     = useState<string | null>(null);
@@ -31,10 +33,11 @@ export default function DocumentsAdministratifsPage() {
 
   useEffect(() => { void load(); }, []);
 
-  /** Is this request out of FIFO order? */
+  /** Hors ordre FIFO = encore en attente et pas la prochaine (pas une demande déjà en traitement). */
   function isOutOfFifoOrder(d: DemandeDocument | null): boolean {
     if (!d) return false;
-    if (d.statut !== 'EN_ATTENTE_FILE' && d.statut !== 'EN_TRAITEMENT_RH') return false;
+    if (d.statut === 'EN_TRAITEMENT_RH') return false;
+    if (d.statut !== 'EN_ATTENTE_FILE') return false;
     return d.est_prochaine_fifo === false;
   }
 
@@ -133,16 +136,18 @@ export default function DocumentsAdministratifsPage() {
           <button type="button" className="btn btn--secondary" onClick={() => void load()} disabled={loading}>
             Actualiser
           </button>
-          <button 
-            type="button" 
-            className="btn btn--primary" 
-            onClick={() => void prendreProchaine()}
-            disabled={hasPendingTraitement || loading}
-            title={hasPendingTraitement ? "Veuillez terminer le traitement de la demande en cours avant d'en prendre une nouvelle." : undefined}
-            style={{ opacity: hasPendingTraitement ? 0.6 : 1, cursor: hasPendingTraitement ? 'not-allowed' : 'pointer' }}
-          >
-            {hasPendingTraitement ? '🔒 Terminer le traitement en cours' : 'Prendre la prochaine demande'}
-          </button>
+          {!lectureSeule ? (
+            <button 
+              type="button" 
+              className="btn btn--primary" 
+              onClick={() => void prendreProchaine()}
+              disabled={hasPendingTraitement || loading}
+              title={hasPendingTraitement ? "Veuillez terminer le traitement de la demande en cours avant d'en prendre une nouvelle." : undefined}
+              style={{ opacity: hasPendingTraitement ? 0.6 : 1, cursor: hasPendingTraitement ? 'not-allowed' : 'pointer' }}
+            >
+              {hasPendingTraitement ? '🔒 Terminer le traitement en cours' : 'Prendre la prochaine demande'}
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -366,39 +371,43 @@ export default function DocumentsAdministratifsPage() {
             <div style={{ display: 'flex', gap: 10, marginTop: 24, flexWrap: 'wrap' }}>
               {actionMode === 'info' && (
                 <>
-                  <button style={{ 
-                    ...footerBtnStyle, 
-                    background: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? '#f87171' : '#fef2f2', 
-                    color: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'white' : '#dc2626', 
-                    border: '1px solid #fecaca',
-                    opacity: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 0.6 : 1,
-                    cursor: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'not-allowed' : 'pointer'
-                  }}
-                    disabled={hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH'}
-                    title={hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'Terminez d\'abord le traitement en cours' : undefined}
-                    onClick={() => setActionMode('reject')}>
-                    Refuser
-                  </button>
+                  {!lectureSeule ? (
+                    <button style={{ 
+                      ...footerBtnStyle, 
+                      background: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? '#f87171' : '#fef2f2', 
+                      color: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'white' : '#dc2626', 
+                      border: '1px solid #fecaca',
+                      opacity: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 0.6 : 1,
+                      cursor: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'not-allowed' : 'pointer'
+                    }}
+                      disabled={hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH'}
+                      title={hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'Terminez d\'abord le traitement en cours' : undefined}
+                      onClick={() => setActionMode('reject')}>
+                      Refuser
+                    </button>
+                  ) : null}
                   <div style={{ flex: 1 }} />
                   <button style={{ ...footerBtnStyle, background: 'white', border: '1px solid #e2e8f0', color: '#374151' }}
                     onClick={closeModal}>
                     Fermer
                   </button>
-                  <button style={{ 
-                    ...footerBtnStyle, 
-                    background: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? '#94a3b8' : '#1e40af', 
-                    color: 'white',
-                    opacity: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 0.6 : 1,
-                    cursor: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'not-allowed' : 'pointer'
-                  }}
-                    disabled={hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH'}
-                    title={hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'Terminez d\'abord le traitement en cours' : undefined}
-                    onClick={() => setActionMode('validate')}>
-                    {hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? '🔒 Traitement bloqué' : 'Valider le document'}
-                  </button>
+                  {!lectureSeule ? (
+                    <button style={{ 
+                      ...footerBtnStyle, 
+                      background: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? '#94a3b8' : '#1e40af', 
+                      color: 'white',
+                      opacity: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 0.6 : 1,
+                      cursor: hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'not-allowed' : 'pointer'
+                    }}
+                      disabled={hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH'}
+                      title={hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? 'Terminez d\'abord le traitement en cours' : undefined}
+                      onClick={() => setActionMode('validate')}>
+                      {hasPendingTraitement && pickedDemande?.statut !== 'EN_TRAITEMENT_RH' ? '🔒 Traitement bloqué' : 'Valider le document'}
+                    </button>
+                  ) : null}
                 </>
               )}
-              {actionMode === 'validate' && (
+              {!lectureSeule && actionMode === 'validate' && (
                 <>
                   <button style={{ ...footerBtnStyle, background: 'white', border: '1px solid #e2e8f0', color: '#374151' }}
                     onClick={() => setActionMode('info')}>
@@ -419,7 +428,7 @@ export default function DocumentsAdministratifsPage() {
                   </button>
                 </>
               )}
-              {actionMode === 'reject' && (
+              {!lectureSeule && actionMode === 'reject' && (
                 <>
                   <button style={{ ...footerBtnStyle, background: 'white', border: '1px solid #e2e8f0', color: '#374151' }}
                     onClick={() => setActionMode('info')}>

@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getToken, signIn } from '../api/auth';
+import { clearToken, getToken, signIn } from '../api/auth';
+import { canAccessBackoffice } from '../auth/jwtRoles';
 
 export default function LoginPage() {
   const nav = useNavigate();
@@ -10,7 +11,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (getToken()) nav('/app/accueil', { replace: true });
+    const t = getToken();
+    if (t && canAccessBackoffice(t)) nav('/app/accueil', { replace: true });
   }, [nav]);
 
   async function onSubmit(e: FormEvent) {
@@ -19,6 +21,12 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await signIn(user, pass);
+      const t = getToken();
+      if (!canAccessBackoffice(t)) {
+        clearToken();
+        setErr('Accès réservé aux comptes RH, Direction ou Admin. Utilisez RH Connect.');
+        return;
+      }
       nav('/app/accueil', { replace: true });
     } catch (x) {
       setErr(x instanceof Error ? x.message : 'Connexion impossible');
@@ -31,7 +39,7 @@ export default function LoginPage() {
     <div className="login-page">
       <div className="login-card">
         <h1>Plateforme RH</h1>
-        <p className="lead">Connexion sécurisée — compte avec rôle RH.</p>
+        <p className="lead">Connexion sécurisée — compte RH, Direction ou Admin.</p>
         <form onSubmit={onSubmit}>
           <label className="field-label">Utilisateur ou e-mail</label>
           <input

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   getCollaborateursPage,
   getUnites,
+  nomCollaborateur,
   postCollaborateur,
   postUnite,
   putCollaborateur,
@@ -53,7 +54,7 @@ function Badge({ label, color }: { label: string; color: 'blue' | 'purple' | 'gr
 function CollabOption({ c }: { c: CollaborateurRow }) {
   return (
     <option value={c.identifiant}>
-      {c.matricule} — {c.prenom} {c.name}
+      {c.matricule} — {c.prenom} {nomCollaborateur(c)}
     </option>
   );
 }
@@ -134,17 +135,16 @@ function ModalCreerDept({
       if (chefMode === 'existant') {
         if (!chefId) throw new Error('Sélectionnez un collaborateur');
         await putCollaborateur(chefId, {
-          profil_acces: 'RESPONSABLE',
           unite_identifiant: createdDeptId,
         });
       } else {
         await postCollaborateur({
           matricule: cMatricule.trim(),
           prenom: cPrenom.trim(),
+          nom: cNom.trim(),
           name: cNom.trim(),
           courriel_professionnel: cEmail.trim(),
           statut: 'ACTIF',
-          profil_acces: 'RESPONSABLE',
           unite_identifiant: createdDeptId,
           mot_de_passe_initial: cMdp,
         });
@@ -230,7 +230,7 @@ function ModalCreerDept({
           )}
 
           <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0.75rem 0 1.5rem' }}>
-            Étape 2/2 — Le chef de département sera affecté au profil <strong>Responsable</strong>.
+            Étape 2/2 — Affectation à l&apos;unité uniquement. Le profil d&apos;accès se définit sur la fiche collaborateur.
           </p>
           <div className="modal__actions">
             <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
@@ -266,14 +266,8 @@ function ModalEditDept({
     setSaving(true);
     try {
       await putUnite(dept.identifiant, { libelle: libelle.trim() });
-      // Affecter nouveau chef si changé
       if (chefId && chefId !== chef?.identifiant) {
-        // Retirer ancien chef
-        if (chef) {
-          await putCollaborateur(chef.identifiant, { profil_acces: 'COLLABORATEUR' });
-        }
         await putCollaborateur(chefId, {
-          profil_acces: 'RESPONSABLE',
           unite_identifiant: dept.identifiant,
         });
       }
@@ -300,6 +294,9 @@ function ModalEditDept({
         <option value="">— Aucun —</option>
         {collaborateurs.map((c) => <CollabOption key={c.identifiant} c={c} />)}
       </select>
+      <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0.25rem 0 1rem' }}>
+        Le profil d&apos;accès se définit sur la fiche collaborateur.
+      </p>
 
       {unitesRattachees.length > 0 && (
         <div style={{
@@ -382,17 +379,16 @@ function ModalCreerUnite({
       if (roMode === 'existant') {
         if (!roId) throw new Error('Sélectionnez un collaborateur');
         await putCollaborateur(roId, {
-          profil_acces: 'RO',
           unite_identifiant: createdUniteId,
         });
       } else {
         await postCollaborateur({
           matricule: cMatricule.trim(),
           prenom: cPrenom.trim(),
+          nom: cNom.trim(),
           name: cNom.trim(),
           courriel_professionnel: cEmail.trim(),
           statut: 'ACTIF',
-          profil_acces: 'RO',
           unite_identifiant: createdUniteId,
           mot_de_passe_initial: cMdp,
         });
@@ -484,7 +480,7 @@ function ModalCreerUnite({
           )}
 
           <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0.75rem 0 1.5rem' }}>
-            Étape 2/2 — Le RO sera affecté au profil <strong>Responsable Opérationnel</strong>.
+            Étape 2/2 — Affectation à l&apos;unité uniquement. Le profil d&apos;accès se définit sur la fiche collaborateur.
           </p>
           <div className="modal__actions">
             <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
@@ -525,8 +521,7 @@ function ModalEditUnite({
         parent_identifiant: deptId || null,
       });
       if (roId && roId !== ro?.identifiant) {
-        if (ro) await putCollaborateur(ro.identifiant, { profil_acces: 'COLLABORATEUR' });
-        await putCollaborateur(roId, { profil_acces: 'RO', unite_identifiant: unite.identifiant });
+        await putCollaborateur(roId, { unite_identifiant: unite.identifiant });
       }
       onDone();
     } catch (e) {
@@ -556,6 +551,9 @@ function ModalEditUnite({
         <option value="">— Aucun —</option>
         {collaborateurs.map((c) => <CollabOption key={c.identifiant} c={c} />)}
       </select>
+      <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0.25rem 0 1rem' }}>
+        Le profil d&apos;accès se définit sur la fiche collaborateur.
+      </p>
 
       <div className="modal__actions">
         <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
@@ -609,9 +607,9 @@ function UniteCard({
             </div>
             {ro ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                <Avatar name={`${ro.prenom} ${ro.name}`} />
+                <Avatar name={`${ro.prenom} ${nomCollaborateur(ro)}`} />
                 <div>
-                  <span style={{ fontSize: 12, fontWeight: 600 }}>{ro.prenom} {ro.name}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>{ro.prenom} {nomCollaborateur(ro)}</span>
                   <Badge label="RO" color="purple" />
                   <div style={{ fontSize: 11, color: 'var(--muted)' }}>{ro.courriel_professionnel ?? ro.matricule}</div>
                 </div>
@@ -646,10 +644,10 @@ function UniteCard({
                     background: 'var(--surface)', border: '1px solid var(--border)',
                     borderRadius: 10, padding: '8px 12px',
                   }}>
-                    <Avatar name={`${t.prenom} ${t.name}`} />
+                    <Avatar name={`${t.prenom} ${nomCollaborateur(t)}`} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {t.prenom} {t.name}
+                        {t.prenom} {nomCollaborateur(t)}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--muted)' }}>{t.poste_libelle ?? t.fonction ?? t.matricule}</div>
                     </div>
@@ -726,9 +724,9 @@ function DeptCard({
             </div>
             {chef ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                <Avatar name={`${chef.prenom} ${chef.name}`} />
+                <Avatar name={`${chef.prenom} ${nomCollaborateur(chef)}`} />
                 <div>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{chef.prenom} {chef.name}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{chef.prenom} {nomCollaborateur(chef)}</span>
                   {' '}
                   <Badge label="Chef de département" color="blue" />
                   <div style={{ fontSize: 12, color: 'var(--muted)' }}>{chef.courriel_professionnel ?? chef.matricule}</div>
@@ -858,7 +856,8 @@ export default function StructureOrganisationPage() {
         <div>
           <h2 className="page__title">Structure organisationnelle</h2>
           <p className="page__lead">
-            Hiérarchie : <strong>Département</strong> → Chef de département → <strong>Unité</strong> → Responsable Opérationnel → Travailleurs
+            Hiérarchie : <strong>Département</strong> → Chef de département → <strong>Unité</strong> → Responsable Opérationnel → Travailleurs.
+            Le profil d&apos;accès se définit sur la fiche collaborateur.
           </p>
         </div>
         <div className="page__head-actions">

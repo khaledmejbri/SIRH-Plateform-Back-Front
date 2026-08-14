@@ -70,9 +70,17 @@ public class Collaborateur {
 	@Column(name = "statut", nullable = false, length = 32)
 	private String statut;
 
-	/** Profil d'acces persiste : COLLABORATEUR, RESPONSABLE (chef departement) ou RO (responsable operationnel). */
+	/** Profil d'accès persisté : COLLABORATEUR, RO, RESPONSABLE, RH, DIRECTION, ADMIN. */
 	@Column(name = "profil_acces", nullable = false, length = 32)
 	private String profilAcces = "COLLABORATEUR";
+
+	/** Catalogue famille métier (clé matching M07) — code {@code rh_famille_metier}. */
+	@Column(name = "famille_metier_code", length = 64)
+	private String familleMetierCode;
+
+	/** Catalogue fermé : JUNIOR, CONFIRME, SENIOR, TEAM_LEAD. */
+	@Column(name = "niveau_seniorite", length = 32)
+	private String niveauSeniorite;
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "unite_identifiant", nullable = false)
@@ -239,6 +247,23 @@ public class Collaborateur {
 	public void setProfilAcces(String profilAcces) {
 		this.profilAcces = profilAcces == null ? "COLLABORATEUR" : profilAcces.trim().toUpperCase();
 	}
+
+	public String getFamilleMetierCode() {
+		return familleMetierCode;
+	}
+
+	public void setFamilleMetierCode(String familleMetierCode) {
+		this.familleMetierCode = familleMetierCode;
+	}
+
+	public String getNiveauSeniorite() {
+		return niveauSeniorite;
+	}
+
+	public void setNiveauSeniorite(String niveauSeniorite) {
+		this.niveauSeniorite = niveauSeniorite;
+	}
+
 	public Instant getCreeLe() {
 		return creeLe;
 	}

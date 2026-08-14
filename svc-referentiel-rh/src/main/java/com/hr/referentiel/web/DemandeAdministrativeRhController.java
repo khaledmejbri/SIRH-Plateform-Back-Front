@@ -19,10 +19,10 @@ import java.util.UUID;
 /**
  * CDC v2 §M01 — Demandes administratives (congé, autorisation sortie, ordre mission).
  *
- * Workflow : demandeur → RO de son unité (si existe) → RRH.
+ * Workflow : demandeur → manager ACTIF du nœud d'unité (si existe) → RRH.
  * Nouveaux endpoints :
  *   DELETE /{id}/annuler       — annulation par le demandeur (statut SOUMISE ou EN_VALIDATION_SUPERIEUR)
- *   GET    /en-attente-ro      — liste des demandes en attente de validation pour le RO connecté
+ *   GET    /en-attente-ro      — file des demandes dont le connecté est le valideur attendu (manager nœud)
  */
 @RestController
 @RequestMapping("/api/rh/v1/demandes-administratives")
@@ -57,8 +57,8 @@ public class DemandeAdministrativeRhController {
 	}
 
 	/**
-	 * Demandes EN_VALIDATION_SUPERIEUR en attente du RO connecté.
-	 * CDC §M01 : le RO voit toutes les demandes de son unité à valider.
+	 * Demandes EN_VALIDATION_SUPERIEUR en attente du manager de nœud connecté
+	 * (snapshot {@code valideur_attendu} — pas le seul JWT RO).
 	 */
 	@GetMapping("/en-attente-ro")
 	@PreAuthorize("hasRole('USER')")
@@ -70,7 +70,7 @@ public class DemandeAdministrativeRhController {
 
 	/** Liste RH complète avec filtres. */
 	@GetMapping("/liste")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_LECTURE)
 	public ResponseEntity<List<DemandeAdministrativeRhResponse>> listerPourRh(
 			@RequestParam(name = "type_demande", required = false) TypeDemandeAdministrativeRh typeDemande,
 			@RequestParam(name = "couvre_jour", required = false) LocalDate couvreJour,
@@ -78,7 +78,7 @@ public class DemandeAdministrativeRhController {
 		return ResponseEntity.ok(demandeAdministrativeRhService.listerToutPourRh(typeDemande, couvreJour, statut));
 	}
 
-	/** Validation par le RO (Responsable Opérationnel) de l'unité du demandeur. */
+	/** Validation par le manager ACTIF du nœud d'unité du demandeur (403 si autre nœud / inactif). */
 	@PostMapping("/{identifiant}/valider-superieur")
 	@PreAuthorize("hasRole('USER')")
 	public ResponseEntity<DemandeAdministrativeRhResponse> validerSuperieur(
@@ -88,7 +88,7 @@ public class DemandeAdministrativeRhController {
 				demandeAdministrativeRhService.validerSuperieur(identifiant, principal.getToken()));
 	}
 
-	/** Refus par le RO avec motif obligatoire. */
+	/** Refus par le manager du nœud avec motif obligatoire. */
 	@PostMapping("/{identifiant}/refuser-superieur")
 	@PreAuthorize("hasRole('USER')")
 	public ResponseEntity<DemandeAdministrativeRhResponse> refuserSuperieur(
@@ -101,14 +101,14 @@ public class DemandeAdministrativeRhController {
 
 	/** Approbation finale RRH. */
 	@PostMapping("/{identifiant}/valider-rrh")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<DemandeAdministrativeRhResponse> validerRrh(@PathVariable UUID identifiant) {
 		return ResponseEntity.ok(demandeAdministrativeRhService.validerRrh(identifiant));
 	}
 
 	/** Refus RRH avec motif obligatoire. */
 	@PostMapping("/{identifiant}/refuser-rrh")
-	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_RH)
+	@PreAuthorize(PreAuthorizeExpressions.BACKOFFICE_ECRITURE)
 	public ResponseEntity<DemandeAdministrativeRhResponse> refuserRrh(
 			@PathVariable UUID identifiant,
 			@Valid @RequestBody DemandeRefusRequest requete) {

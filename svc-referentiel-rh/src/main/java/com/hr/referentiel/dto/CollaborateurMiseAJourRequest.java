@@ -1,6 +1,8 @@
 package com.hr.referentiel.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.hr.referentiel.domain.ProfilAccesCollaborateur;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
@@ -60,8 +62,23 @@ public class CollaborateurMiseAJourRequest {
 	@JsonProperty("compte_utilisateur_id")
 	private UUID compteUtilisateurId;
 
+	/**
+	 * Catalogue unique : {@code COLLABORATEUR}, {@code RO}, {@code RESPONSABLE}, {@code RH},
+	 * {@code DIRECTION}, {@code ADMIN}. Omise ou blank : inchangé.
+	 */
+	@Pattern(regexp = "|COLLABORATEUR|RO|RESPONSABLE|RH|DIRECTION|ADMIN",
+			flags = Pattern.Flag.CASE_INSENSITIVE,
+			message = ProfilAccesCollaborateur.MESSAGE_INVALIDE)
 	@JsonProperty("profil_acces")
 	private String profilAcces;
+
+	@Size(max = 64)
+	@JsonProperty("famille_metier_code")
+	private String familleMetierCode;
+
+	@Size(max = 32)
+	@JsonProperty("niveau_seniorite")
+	private String niveauSeniorite;
 
 	public String getPrenom() {
 		return prenom;
@@ -181,5 +198,21 @@ public class CollaborateurMiseAJourRequest {
 
 	public void setProfilAcces(String profilAcces) {
 		this.profilAcces = profilAcces;
+	}
+
+	public String getFamilleMetierCode() {
+		return familleMetierCode;
+	}
+
+	public void setFamilleMetierCode(String familleMetierCode) {
+		this.familleMetierCode = familleMetierCode;
+	}
+
+	public String getNiveauSeniorite() {
+		return niveauSeniorite;
+	}
+
+	public void setNiveauSeniorite(String niveauSeniorite) {
+		this.niveauSeniorite = niveauSeniorite;
 	}
 }

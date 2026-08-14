@@ -126,8 +126,8 @@ public class EvaluationRhService {
 	@Transactional
 	public EvaluationRhResponse validerCollaborateur(UUID id, UUID acteurIdentifiant) {
 		EvaluationRh evaluation = charger(id);
-		if (acteurIdentifiant != null && !acteurIdentifiant.equals(evaluation.getCollaborateurIdentifiant())) {
-			throw new IllegalArgumentException("Seul le collaborateur evalue peut valider cette evaluation.");
+		if (acteurIdentifiant == null || !acteurIdentifiant.equals(evaluation.getCollaborateurIdentifiant())) {
+			throw new SecurityException("Seul le collaborateur evalue peut valider cette evaluation.");
 		}
 		evaluation.setValidationCollaborateurLe(Instant.now());
 		actualiserStatutValidation(evaluation);
@@ -137,8 +137,8 @@ public class EvaluationRhService {
 	@Transactional
 	public EvaluationRhResponse validerSuperieur(UUID id, UUID acteurIdentifiant) {
 		EvaluationRh evaluation = charger(id);
-		if (acteurIdentifiant != null && !acteurIdentifiant.equals(evaluation.getSuperieurIdentifiant())) {
-			throw new IllegalArgumentException("Seul le superieur renseigne peut valider cette evaluation.");
+		if (acteurIdentifiant == null || !acteurIdentifiant.equals(evaluation.getSuperieurIdentifiant())) {
+			throw new SecurityException("Seul le superieur renseigne peut valider cette evaluation.");
 		}
 		evaluation.setValidationSuperieurLe(Instant.now());
 		actualiserStatutValidation(evaluation);

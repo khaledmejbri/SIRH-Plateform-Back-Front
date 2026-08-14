@@ -24,7 +24,9 @@ import '../../features/plaintes/presentation/plainte_create_screen.dart';
 import '../../features/plaintes/presentation/plainte_detail_screen.dart';
 import '../../features/plaintes/presentation/plaintes_list_screen.dart';
 import '../../features/pointage/presentation/pointage_screen.dart';
+import '../../features/pointage/presentation/presence_sites_admin_screen.dart';
 import '../../features/splash/presentation/splash_screen.dart';
+import '../../features/organigramme/presentation/organigramme_screen.dart';
 
 final _routerRefresh = ValueNotifier<int>(0);
 
@@ -62,6 +64,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
       GoRoute(path: '/pointage', builder: (_, __) => const PointageScreen()),
+      GoRoute(
+        path: '/presence/sites',
+        builder: (_, __) => const PresenceSitesAdminScreen(),
+      ),
       GoRoute(path: '/feed', builder: (_, __) => const FeedScreen()),
       GoRoute(path: '/formations', builder: (_, __) => const FormationsListScreen()),
       GoRoute(path: '/formations/nouveau', builder: (_, __) => const FormationCreateScreen()),
@@ -90,9 +96,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/evaluations', builder: (_, __) => const EvaluationsListScreen()),
       GoRoute(
         path: '/evaluations/:id',
-        builder: (c, s) => EvaluationDetailScreen(id: s.pathParameters['id']!),
+        builder: (c, s) => EvaluationDetailScreen(
+          id: s.pathParameters['id']!,
+          forceManagerMode: s.uri.queryParameters['mode'] == 'manager',
+        ),
       ),
       GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
+      GoRoute(path: '/organigramme', builder: (_, __) => const OrganigrammeScreen()),
     ],
   );
 });

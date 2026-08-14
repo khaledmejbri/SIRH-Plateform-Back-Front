@@ -1,18 +1,22 @@
 package com.hr.referentiel.service;
 
+import com.hr.referentiel.domain.TypeConge;
 import com.hr.referentiel.domain.TypeDemandeAdministrativeRh;
+import com.hr.referentiel.web.ReferentielMetierException;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 import java.util.Map;
 
 /**
  * CDC v2 §M01 — Validation du contenu selon le type de demande.
  * Corrections v2 :
- *  - CONGE        : date_debut <= date_fin obligatoire
+ *  - CONGE        : date_debut <= date_fin ; catalogue fermé {@link TypeConge} ;
+ *                   PJ obligatoire pour MALADIE / MATERNITE
  *  - AUTORISATION : durée max 4h, motif libre (plus de type_sortie)
  *  - ORDRE_MISSION: date_debut <= date_fin, motif + lieu obligatoires
  */
@@ -35,6 +39,11 @@ public class DemandeAdministrativeValidationService {
 				if (fin.isBefore(debut)) {
 					throw new IllegalArgumentException(
 							"La date de fin de congé ne peut pas être antérieure à la date de début.");
+				}
+				TypeConge typeConge = TypeConge.parse(String.valueOf(contenu.get("type_conge")));
+				if (typeConge.exigePieceJointe() && !aPieceJointe(contenu)) {
+					throw ReferentielMetierException.unprocessable(
+							"CERTIFICAT_OBLIGATOIRE", TypeConge.MESSAGE_CERTIFICAT_OBLIGATOIRE);
 				}
 			}
 			case AUTORISATION_SORTIE -> {
@@ -68,6 +77,37 @@ public class DemandeAdministrativeValidationService {
 				}
 			}
 		}
+	}
+
+	/**
+	 * PJ acceptée via {@code certificat} (URL, nom de fichier, ou marqueur multipart)
+	 * ou {@code pieces_jointes} (liste / chaîne non vide).
+	 */
+	static boolean aPieceJointe(Map<String, Object> contenu) {
+		if (contenu == null) {
+			return false;
+		}
+		Object certificat = contenu.get("certificat");
+		if (certificat != null && !String.valueOf(certificat).isBlank()) {
+			return true;
+		}
+		Object pieces = contenu.get("pieces_jointes");
+		if (pieces == null) {
+			return false;
+		}
+		if (pieces instanceof Collection<?> collection) {
+			return collection.stream().anyMatch(e -> e != null && !String.valueOf(e).isBlank());
+		}
+		if (pieces instanceof Object[] array) {
+			for (Object e : array) {
+				if (e != null && !String.valueOf(e).isBlank()) {
+					return true;
+				}
+			}
+			return false;
+		}
+		String raw = String.valueOf(pieces).trim();
+		return !raw.isEmpty() && !"[]".equals(raw) && !"null".equalsIgnoreCase(raw);
 	}
 
 	private static LocalDate parseDate(Map<String, Object> contenu, String cle) {

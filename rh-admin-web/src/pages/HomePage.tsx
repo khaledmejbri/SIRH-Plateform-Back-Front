@@ -6,8 +6,10 @@ import {
   getDocumentsFileAttente,
   getPlaintesRh,
 } from '../api/rhClient';
+import { useLectureSeule } from '../auth/useLectureSeule';
 
 export default function HomePage() {
+  const lectureSeule = useLectureSeule();
   const [plaintes,  setPlaintes]  = useState<number | null>(null);
   const [docs,      setDocs]      = useState<number | null>(null);
   const [demandes,  setDemandes]  = useState<number | null>(null);
@@ -85,7 +87,9 @@ export default function HomePage() {
           Tableau de bord
         </h2>
         <p style={{ margin: '6px 0 0', color: '#64748b', fontSize: 14 }}>
-          Vue d'ensemble de l'activité RH en temps réel.
+          {lectureSeule
+            ? 'Vue d’ensemble — consultation Direction (compteurs et listes).'
+            : 'Vue d\'ensemble de l\'activité RH en temps réel.'}
         </p>
       </div>
 
@@ -135,11 +139,18 @@ export default function HomePage() {
           Accès rapide
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {[
-            { to: '/app/unites',                   label: 'Unités organisationnelles', icon: '🏢' },
-            { to: '/app/documents-administratifs', label: 'Traiter une demande de document', icon: '📄' },
-            { to: '/app/collaborateurs',           label: 'Créer un collaborateur', icon: '👤' },
-          ].map(l => (
+          {(lectureSeule
+            ? [
+                { to: '/app/documents-administratifs', label: 'File documents (consultation)', icon: '📄' },
+                { to: '/app/collaborateurs',           label: 'Collaborateurs', icon: '👤' },
+                { to: '/app/organigramme',             label: 'Organigramme', icon: '🌳' },
+              ]
+            : [
+                { to: '/app/unites',                   label: 'Unités organisationnelles', icon: '🏢' },
+                { to: '/app/documents-administratifs', label: 'Traiter une demande de document', icon: '📄' },
+                { to: '/app/collaborateurs',           label: 'Créer un collaborateur', icon: '👤' },
+              ]
+          ).map(l => (
             <Link key={l.to} to={l.to} style={{
               display: 'flex', alignItems: 'center', gap: 12,
               padding: '12px 14px', borderRadius: 10,
